@@ -1,9 +1,10 @@
+
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import axios from 'axios';
 import crypto from 'crypto';
-import { getAdsApiAccessToken } from '../helpers/amazon-api.js';
+import { getAdsApiAccessToken } from '../backend/helpers/amazon-api.js';
 
 // --- Configuration ---
 const __filename = fileURLToPath(import.meta.url);
