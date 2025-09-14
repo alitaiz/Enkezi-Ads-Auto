@@ -81,8 +81,8 @@ router.get('/sp-search-terms', async (req, res) => {
                 asin,
                 targeting, 
                 match_type,
-                SUM(impressions) as impressions,
-                SUM(clicks) as clicks,
+                SUM(COALESCE(impressions, 0)) as impressions,
+                SUM(COALESCE(clicks, 0)) as clicks,
                 SUM(COALESCE(spend, cost, 0)) as spend,
                 SUM(COALESCE(seven_day_total_sales, sales_7d, 0)) as seven_day_total_sales,
                 SUM(COALESCE(seven_day_total_orders, purchases_7d, 0)) as seven_day_total_orders,
@@ -98,7 +98,7 @@ router.get('/sp-search-terms', async (req, res) => {
                 asin,
                 targeting, 
                 match_type
-            ORDER BY SUM(impressions) DESC NULLS LAST;
+            ORDER BY SUM(COALESCE(impressions, 0)) DESC NULLS LAST;
         `;
 
         const result = await pool.query(query, queryParams);
