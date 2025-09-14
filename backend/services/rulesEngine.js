@@ -132,7 +132,7 @@ const getBidAdjustmentPerformanceData = async (rule, campaignIds, maxLookbackDay
                 campaign_id::text AS campaign_id_text,
                 ad_group_id::text AS ad_group_id_text,
                 SUM(COALESCE(impressions, 0))::bigint AS impressions,
-                SUM(COALESCE(spend, cost, 0))::numeric AS spend,
+                SUM(COALESCE(cost, 0))::numeric AS spend,
                 SUM(COALESCE(clicks, 0))::bigint AS clicks,
                 SUM(COALESCE(sales_1d, 0))::numeric AS sales,
                 SUM(COALESCE(purchases_1d, 0))::bigint AS orders
@@ -200,7 +200,7 @@ const getSearchTermAutomationPerformanceData = async (rule, campaignIds, maxLook
         SELECT
             report_date AS performance_date, customer_search_term, campaign_id, ad_group_id,
             COALESCE(SUM(COALESCE(impressions, 0::bigint)), 0)::bigint AS impressions,
-            COALESCE(SUM(COALESCE(spend, cost, 0::numeric)), 0)::numeric AS spend,
+            COALESCE(SUM(COALESCE(cost, 0::numeric)), 0)::numeric AS spend,
             COALESCE(SUM(COALESCE(sales_1d, 0::numeric)), 0)::numeric AS sales,
             COALESCE(SUM(COALESCE(clicks, 0::bigint)), 0)::bigint AS clicks,
             COALESCE(SUM(COALESCE(purchases_1d, 0::bigint)), 0)::bigint AS orders
