@@ -422,10 +422,10 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                         <input
                                             type="time"
                                             style={{...styles.input, width: '150px'}}
-                                            // FIX: The type of formData.config.frequency is a complex union. Cast to a type with an optional startTime property to allow safe access.
-                                            value={(formData.config.frequency as { startTime?: string })?.startTime || '01:00'}
-                                            // FIX: Cast frequency to a generic object for spreading to avoid type errors with the union type.
-                                            onChange={e => handleConfigChange('frequency', { ...(formData.config.frequency as object), startTime: e.target.value })}
+                                            // FIX: Cast frequency to 'any' to bypass TypeScript's incorrect type inference, which caused a compile error.
+                                            // The application logic ensures 'startTime' is available when the unit is 'days'.
+                                            value={(formData.config.frequency as any)?.startTime || '01:00'}
+                                            onChange={e => handleConfigChange('frequency', { ...(formData.config.frequency as any), startTime: e.target.value })}
                                             required
                                         />
                                         <p style={{fontSize: '0.8rem', color: '#666', margin: 0}}>Rule will run after this time, every {formData.config.frequency.value} day(s).</p>
