@@ -6,6 +6,8 @@ import { amazonAdsApiRequest } from '../helpers/amazon-api.js';
 // Define a constant for Amazon's reporting timezone to ensure consistency.
 const REPORTING_TIMEZONE = 'America/Los_Angeles';
 let mainTask = null;
+let resetTask = null;
+
 
 // --- Logging Helper ---
 const logAction = async (rule, status, summary, details = {}) => {
@@ -46,11 +48,14 @@ const getLocalDateString = (timeZone) => {
  * Calculates aggregated metrics from a list of daily data points for a specific lookback period.
  * This function is now timezone-aware and robust.
  * @param {Array<object>} dailyData - Array of { date, spend, sales, clicks, orders, impressions }.
- * @param {number} lookbackDays - The number of days to look back (e.g., 7 for "last 7 days").
+ * @param {number | 'TODAY'} lookbackDays - The number of days to look back (e.g., 7 for "last 7 days").
  * @param {Date} referenceDate - The end date for the lookback window (inclusive).
  * @returns {object} An object with aggregated metrics { spend, sales, clicks, orders, impressions, acos }.
  */
 const calculateMetricsForWindow = (dailyData, lookbackDays, referenceDate) => {
+    if (lookbackDays === 'TODAY') {
+        lookbackDays = 1;
+    }
     const endDate = new Date(referenceDate);
 
     const startDate = new Date(endDate);
@@ -72,6 +77,7 @@ const calculateMetricsForWindow = (dailyData, lookbackDays, referenceDate) => {
     }, { spend: 0, sales: 0, clicks: 0, orders: 0, impressions: 0 });
 
     totals.acos = totals.sales > 0 ? totals.spend / totals.sales : 0;
+    totals.roas = totals.spend > 0 ? totals.sales / totals.spend : 0;
     return totals;
 };
 
@@ -240,6 +246,81 @@ const getSearchTermAutomationPerformanceData = async (rule, campaignIds, maxLook
 };
 
 /**
+ * Fetches performance data for BUDGET_ACCELERATION rules.
+ * Uses only real-time stream data for "today so far".
+ */
+const getBudgetAccelerationPerformanceData = async (rule, campaignIds, today) => {
+    // 1. Fetch current budgets for all relevant campaigns from the API
+    const campaignBudgets = new Map();
+    try {
+        let allCampaigns = [];
+        let nextToken = null;
+        const requestBody = {
+            campaignIdFilter: { include: campaignIds.map(id => String(id)) },
+            maxResults: 500,
+        };
+        do {
+             if (nextToken) requestBody.nextToken = nextToken;
+             const response = await amazonAdsApiRequest({
+                method: 'post', url: '/sp/campaigns/list', profileId: rule.profile_id,
+                data: requestBody,
+                headers: { 'Content-Type': 'application/vnd.spCampaign.v3+json', 'Accept': 'application/vnd.spCampaign.v3+json' },
+            });
+            if (response.campaigns) allCampaigns = allCampaigns.concat(response.campaigns);
+            nextToken = response.nextToken;
+        } while (nextToken);
+
+        allCampaigns.forEach(c => {
+            if (c.budget?.budget) {
+                campaignBudgets.set(String(c.campaignId), c.budget.budget);
+            }
+        });
+        console.log(`[RulesEngine] Fetched original budgets for ${campaignBudgets.size} campaigns.`);
+    } catch (e) {
+        console.error('[RulesEngine] Failed to fetch campaign budgets for Budget Acceleration rule.', e);
+        return new Map();
+    }
+    
+    // 2. Fetch today's performance from the stream
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const query = `
+        SELECT
+            (event_data->>'campaign_id') AS campaign_id_text,
+            SUM(CASE WHEN event_type = 'sp-traffic' THEN (event_data->>'cost')::numeric ELSE 0 END) AS spend,
+            SUM(CASE WHEN event_type = 'sp-conversion' THEN (event_data->>'attributed_sales_1d')::numeric ELSE 0 END) AS sales,
+            SUM(CASE WHEN event_type = 'sp-conversion' THEN (event_data->>'attributed_conversions_1d')::bigint ELSE 0 END) AS orders
+        FROM raw_stream_events
+        WHERE event_type IN ('sp-traffic', 'sp-conversion')
+          AND (event_data->>'time_window_start')::timestamptz >= $1
+          AND (event_data->>'campaign_id') = ANY($2)
+        GROUP BY 1;
+    `;
+    const { rows } = await pool.query(query, [todayStart, campaignIds.map(id => String(id))]);
+
+    // 3. Combine and calculate final metrics
+    const performanceMap = new Map();
+    for (const campaignId of campaignIds) {
+        const idStr = String(campaignId);
+        const originalBudget = campaignBudgets.get(idStr);
+        if (typeof originalBudget !== 'number') continue;
+
+        const perf = rows.find(r => r.campaign_id_text === idStr) || {};
+        const spend = parseFloat(perf.spend || 0);
+        const sales = parseFloat(perf.sales || 0);
+        const orders = parseInt(perf.orders || 0, 10);
+        
+        performanceMap.set(idStr, {
+            campaignId: idStr,
+            originalBudget,
+            dailyData: [{ date: today, spend, sales, orders, impressions: 0, clicks: 0 }],
+        });
+    }
+
+    return performanceMap;
+};
+
+
+/**
  * Main data fetching dispatcher. Determines which specialized function to call based on rule type.
  */
 const getPerformanceData = async (rule, campaignIds) => {
@@ -250,16 +331,20 @@ const getPerformanceData = async (rule, campaignIds) => {
         return new Map();
     }
 
-    const allTimeWindows = rule.config.conditionGroups.flatMap(g => g.conditions.map(c => c.timeWindow));
-    const maxLookbackDays = Math.max(...allTimeWindows, 1);
+    const allTimeWindows = rule.config.conditionGroups.flatMap(g => g.conditions.map(c => c.timeWindow).filter(tw => tw !== 'TODAY'));
+    const maxLookbackDays = allTimeWindows.length > 0 ? Math.max(...allTimeWindows, 1) : 1;
     const todayStr = getLocalDateString(REPORTING_TIMEZONE);
     const today = new Date(todayStr);
 
     let performanceMap;
     if (rule.rule_type === 'BID_ADJUSTMENT') {
         performanceMap = await getBidAdjustmentPerformanceData(rule, campaignIds, maxLookbackDays, today);
-    } else { // SEARCH_TERM_AUTOMATION
+    } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
         performanceMap = await getSearchTermAutomationPerformanceData(rule, campaignIds, maxLookbackDays, today);
+    } else if (rule.rule_type === 'BUDGET_ACCELERATION') {
+        performanceMap = await getBudgetAccelerationPerformanceData(rule, campaignIds, today);
+    } else {
+        performanceMap = new Map();
     }
     
     console.log(`[RulesEngine DBG] Aggregated daily data for ${performanceMap.size} unique entities for rule "${rule.name}".`);
@@ -594,6 +679,87 @@ const evaluateSearchTermAutomationRule = async (rule, performanceData, throttled
     };
 };
 
+const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
+    const actionsByCampaign = {};
+    const campaignsToUpdate = [];
+    const referenceDate = new Date(getLocalDateString(REPORTING_TIMEZONE));
+    const todayDateStr = referenceDate.toISOString().split('T')[0];
+
+    // Check which campaigns were already overridden today to prevent runaway increases
+    const alreadyOverriddenResult = await pool.query(
+        `SELECT campaign_id FROM daily_budget_overrides WHERE override_date = $1`,
+        [todayDateStr]
+    );
+    const overriddenCampaignIds = new Set(alreadyOverriddenResult.rows.map(r => String(r.campaign_id)));
+    
+    for (const campaignPerf of performanceData.values()) {
+        if (overriddenCampaignIds.has(String(campaignPerf.campaignId))) continue;
+
+        for (const group of rule.config.conditionGroups) {
+            let allConditionsMet = true;
+            for (const condition of group.conditions) {
+                const metrics = calculateMetricsForWindow(campaignPerf.dailyData, 'TODAY', referenceDate);
+                
+                let metricValue;
+                if (condition.metric === 'budgetUtilization') {
+                    metricValue = campaignPerf.originalBudget > 0 ? (metrics.spend / campaignPerf.originalBudget) * 100 : 0;
+                } else {
+                    metricValue = metrics[condition.metric];
+                }
+                
+                if (!checkCondition(metricValue, condition.operator, condition.value)) {
+                    allConditionsMet = false;
+                    break;
+                }
+            }
+
+            if (allConditionsMet) {
+                const { type, value } = group.action;
+                let newBudget;
+                if (type === 'increaseBudgetPercent') {
+                    newBudget = campaignPerf.originalBudget * (1 + (value / 100));
+                } else if (type === 'setBudgetAmount') {
+                    newBudget = value;
+                }
+                newBudget = parseFloat(newBudget.toFixed(2));
+
+                if (newBudget > campaignPerf.originalBudget) {
+                    await pool.query(
+                        `INSERT INTO daily_budget_overrides (campaign_id, original_budget, override_date) VALUES ($1, $2, $3)`,
+                        [campaignPerf.campaignId, campaignPerf.originalBudget, todayDateStr]
+                    );
+
+                    campaignsToUpdate.push({
+                        campaignId: Number(campaignPerf.campaignId),
+                        budget: { amount: newBudget }
+                    });
+
+                    if (!actionsByCampaign[campaignPerf.campaignId]) actionsByCampaign[campaignPerf.campaignId] = { changes: [] };
+                    actionsByCampaign[campaignPerf.campaignId].changes.push({
+                        entityType: 'campaign', entityId: campaignPerf.campaignId,
+                        oldBudget: campaignPerf.originalBudget, newBudget
+                    });
+                }
+                break; // First match wins
+            }
+        }
+    }
+
+    if (campaignsToUpdate.length > 0) {
+        await amazonAdsApiRequest({
+            method: 'put', url: '/sp/campaigns', profileId: rule.profile_id,
+            data: { campaigns: campaignsToUpdate },
+            headers: { 'Content-Type': 'application/vnd.spCampaign.v3+json', 'Accept': 'application/vnd.spCampaign.v3+json' },
+        });
+    }
+
+    return {
+        summary: `Accelerated budget for ${campaignsToUpdate.length} campaign(s).`,
+        details: { actions_by_campaign: actionsByCampaign },
+        actedOnEntities: [] // Cooldown not applicable here
+    };
+};
+
 // --- Main Orchestration ---
 
 const isRuleDue = (rule) => {
@@ -684,7 +850,7 @@ const processRule = async (rule) => {
         
         const performanceData = await getPerformanceData(rule, campaignIds);
         
-        if (performanceData.size === 0) {
+        if (performanceData.size === 0 && rule.rule_type !== 'BUDGET_ACCELERATION') {
             const emptyActionsDetails = {
                 actions_by_campaign: campaignIds.reduce((acc, id) => { acc[id] = { changes: [], newNegatives: [] }; return acc; }, {})
             };
@@ -698,6 +864,8 @@ const processRule = async (rule) => {
             result = await evaluateBidAdjustmentRule(rule, performanceData, throttledEntities);
         } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
             result = await evaluateSearchTermAutomationRule(rule, performanceData, throttledEntities);
+        } else if (rule.rule_type === 'BUDGET_ACCELERATION') {
+            result = await evaluateBudgetAccelerationRule(rule, performanceData);
         } else {
              throw new Error(`Unknown rule type: ${rule.rule_type}`);
         }
@@ -757,6 +925,51 @@ const checkAndRunDueRules = async () => {
     }
 };
 
+const resetBudgets = async () => {
+    console.log(`[BudgetReset] 🌙 Starting daily budget reset process...`);
+    const todayStr = getLocalDateString(REPORTING_TIMEZONE);
+    try {
+        const { rows: overrides } = await pool.query(
+            `SELECT * FROM daily_budget_overrides WHERE override_date = $1 AND reverted_at IS NULL`,
+            [todayStr]
+        );
+        if (overrides.length === 0) {
+            console.log('[BudgetReset] No budgets to reset today.');
+            return;
+        }
+
+        console.log(`[BudgetReset] Found ${overrides.length} campaign(s) to reset.`);
+        
+        // This assumes all campaigns are under the same profile, which is current app behavior.
+        const profileId = (await pool.query('SELECT profile_id FROM automation_rules LIMIT 1')).rows[0]?.profile_id;
+        if (!profileId) {
+            console.error('[BudgetReset] ❌ Cannot reset budgets: No profile ID found in rules table.');
+            return;
+        }
+
+        const updates = overrides.map(o => ({
+            campaignId: Number(o.campaign_id),
+            budget: { amount: parseFloat(o.original_budget) }
+        }));
+
+        await amazonAdsApiRequest({
+            method: 'put', url: '/sp/campaigns', profileId: profileId,
+            data: { campaigns: updates },
+            headers: { 'Content-Type': 'application/vnd.spCampaign.v3+json', 'Accept': 'application/vnd.spCampaign.v3+json' },
+        });
+
+        console.log(`[BudgetReset] ✅ Successfully sent API request to reset ${updates.length} budgets.`);
+        
+        // Mark as reverted in DB
+        const revertedIds = overrides.map(o => o.id);
+        await pool.query(`UPDATE daily_budget_overrides SET reverted_at = NOW() WHERE id = ANY($1)`, [revertedIds]);
+        console.log(`[BudgetReset] 💾 Marked ${revertedIds.length} overrides as reverted in the database.`);
+
+    } catch (error) {
+        console.error('[BudgetReset] ❌ CRITICAL: Failed during budget reset process.', error);
+    }
+};
+
 export const startRulesEngine = () => {
     if (mainTask) {
         console.warn('[RulesEngine] Engine is already running. Skipping new start.');
@@ -768,6 +981,11 @@ export const startRulesEngine = () => {
         scheduled: true,
         timezone: "UTC"
     });
+    // Schedule the daily budget reset
+    resetTask = cron.schedule('55 23 * * *', resetBudgets, {
+        scheduled: true,
+        timezone: REPORTING_TIMEZONE
+    });
 };
 
 export const stopRulesEngine = () => {
@@ -775,6 +993,11 @@ export const stopRulesEngine = () => {
         console.log('[RulesEngine] 🛑 Stopping the automation rules engine.');
         mainTask.stop();
         mainTask = null;
+    }
+    if (resetTask) {
+        console.log('[RulesEngine] 🛑 Stopping the budget reset task.');
+        resetTask.stop();
+        resetTask = null;
     }
 };
 

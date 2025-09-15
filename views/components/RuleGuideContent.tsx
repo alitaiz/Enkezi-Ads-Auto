@@ -25,11 +25,12 @@ export function RuleGuideContent() {
                 Chào mừng bạn đến với <strong>Automation Center</strong>, trung tâm điều khiển mạnh mẽ được thiết kế để giúp bạn tiết kiệm thời gian, giảm chi tiêu lãng phí và tối ưu hóa hiệu suất quảng cáo 24/7. Thay vì phải kiểm tra và điều chỉnh thủ công hàng ngày, bạn có thể thiết lập các "luật" (rules) thông minh để hệ thống tự động làm việc thay bạn, dựa trên các mục tiêu kinh doanh thực tế của bạn.
             </p>
             <p style={guideStyles.p}>
-                Công cụ này cho phép bạn thực hiện hai loại tự động hóa chính:
+                Công cụ này cho phép bạn thực hiện ba loại tự động hóa chính:
             </p>
             <ol style={guideStyles.ol}>
-                <li style={guideStyles.li}><strong>Điều chỉnh Bid (Bid Adjustment):</strong> Tự động tăng hoặc giảm giá thầu của từ khóa/mục tiêu dựa trên các chỉ số hiệu suất như ACOS, ROAS, Lợi nhuận, Tỷ lệ chuyển đổi, v.v.</li>
-                <li style={guideStyles.li}><strong>Quản lý Search Term (Search Term Automation):</strong> Tự động phân tích các cụm từ tìm kiếm của khách hàng để <strong>phủ định</strong> những cụm từ không hiệu quả hoặc <strong>"thu hoạch"</strong> những cụm từ vàng để mở rộng quy mô.</li>
+                <li style={guideStyles.li}><strong>Điều chỉnh Bid (Bid Adjustment):</strong> Tự động tăng hoặc giảm giá thầu của từ khóa/mục tiêu dựa trên các chỉ số hiệu suất như ACOS, ROAS, v.v.</li>
+                <li style={guideStyles.li}><strong>Quản lý Search Term (Search Term Automation):</strong> Tự động phân tích các cụm từ tìm kiếm của khách hàng để <strong>phủ định</strong> những cụm từ không hiệu quả.</li>
+                <li style={guideStyles.li}><strong>Tăng tốc Ngân sách (Budget Acceleration):</strong> Tự động tăng ngân sách cho các chiến dịch đang hoạt động cực kỳ hiệu quả trong ngày để không bỏ lỡ doanh thu tiềm năng.</li>
             </ol>
             <p style={guideStyles.p}>
                 Tài liệu này sẽ giải thích các khái niệm cốt lõi, hướng dẫn bạn cách xác định các chỉ số kinh doanh quan trọng, và cung cấp các ví dụ thực tế để bạn có thể bắt đầu ngay lập tức.
@@ -42,7 +43,7 @@ export function RuleGuideContent() {
             <p style={guideStyles.p}>Một <strong>Rule</strong> là một "container" chứa đựng một chiến lược tự động hóa hoàn chỉnh. Mỗi rule có:</p>
             <ul style={guideStyles.ul}>
                 <li style={guideStyles.li}>Một cái tên (ví dụ: "Tối ưu hóa Bid theo Lợi nhuận").</li>
-                <li style={guideStyles.li}>Một loại hình (Bid Adjustment hoặc Search Term Automation).</li>
+                <li style={guideStyles.li}>Một loại hình (Bid Adjustment, Search Term, hoặc Budget Acceleration).</li>
                 <li style={guideStyles.li}>Một hoặc nhiều nhóm điều kiện logic.</li>
                 <li style={guideStyles.li}>Các cài đặt về tần suất chạy và phạm vi áp dụng.</li>
             </ul>
@@ -89,123 +90,66 @@ export function RuleGuideContent() {
             <h3 style={guideStyles.h3}>3.1. Phần 1: Tính toán ACoS Hòa vốn & ACoS Mục tiêu</h3>
             <p style={guideStyles.p}>Trước khi tạo bất kỳ rule nào, bạn phải trả lời câu hỏi quan trọng nhất: "Với mỗi sản phẩm, tôi có thể chi bao nhiêu cho quảng cáo mà vẫn có lãi?" Câu trả lời chính là <strong>ACoS Hòa vốn (Break-Even ACoS)</strong>.</p>
             <p style={guideStyles.p}><strong>Công thức:</strong> <code style={guideStyles.code}>ACoS Hòa vốn = Lợi nhuận trước Chi phí Quảng cáo / Giá bán sản phẩm</code></p>
-            <p style={guideStyles.p}>Hãy tính toán cho các sản phẩm ví dụ của bạn:</p>
-            <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}><strong>Sản phẩm A ($9.99, Lợi nhuận $4.00):</strong> ACoS Hòa vốn = $4.00 / $9.99 ≈ <strong>40%</strong></li>
-                <li style={guideStyles.li}><strong>Sản phẩm B ($19.99, Lợi nhuận $5.00):</strong> ACoS Hòa vốn = $5.00 / $19.99 ≈ <strong>25%</strong></li>
-                <li style={guideStyles.li}><strong>Sản phẩm C ($29.99, Lợi nhuận $8.00):</strong> ACoS Hòa vốn = $8.00 / $29.99 ≈ <strong>27%</strong></li>
-            </ul>
-            <p style={guideStyles.p}><strong>ACoS Mục tiêu (Target ACoS)</strong> phải <strong>thấp hơn</strong> ACoS Hòa vốn để đảm bảo có lợi nhuận. Ví dụ, với sản phẩm B, bạn có thể đặt ACoS Mục tiêu là <strong>15-20%</strong>.</p>
+            <p style={guideStyles.p}><strong>ACoS Mục tiêu (Target ACoS)</strong> phải <strong>thấp hơn</strong> ACoS Hòa vốn để đảm bảo có lợi nhuận. Ví dụ, nếu ACoS hòa vốn là 25%, bạn có thể đặt ACoS Mục tiêu là <strong>15-20%</strong>.</p>
             
             <h3 style={guideStyles.h3}>3.2. Phần 2: Xác định Ngưỡng Click Hòa Vốn (Break-Even Clicks)</h3>
-            <p style={guideStyles.p}>Khi tạo các rule phủ định, bạn thường thấy các điều kiện như <code style={guideStyles.code}>IF clicks &gt; 12 AND orders = 0</code>. Nhưng tại sao lại là số 12? Việc chọn một con số tùy ý có thể khiến bạn phủ định các từ khóa quá sớm (bỏ lỡ cơ hội) hoặc quá muộn (lãng phí tiền).</p>
+            <p style={guideStyles.p}>Khi tạo các rule phủ định, bạn thường thấy các điều kiện như <code style={guideStyles.code}>IF clicks &gt; 12 AND orders = 0</code>. Việc chọn một con số tùy ý có thể khiến bạn phủ định các từ khóa quá sớm (bỏ lỡ cơ hội) hoặc quá muộn (lãng phí tiền).</p>
             <p style={guideStyles.p}>Cách tiếp cận của chuyên gia là sử dụng <strong>Tỷ lệ Chuyển đổi (Conversion Rate - CVR)</strong> để xác định một ngưỡng click hợp lý về mặt thống kê.</p>
             <p style={guideStyles.p}><strong>Công thức:</strong> <code style={guideStyles.code}>Ngưỡng Click = 1 / Tỷ lệ Chuyển đổi mục tiêu</code></p>
-            <p style={guideStyles.p}><strong>Giải thích:</strong></p>
-            <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}>Nếu tỷ lệ chuyển đổi (CVR) trung bình của sản phẩm bạn là <strong>8%</strong> (tức là cứ 100 clicks thì có 8 đơn hàng), thì về mặt lý thuyết, bạn cần <code style={guideStyles.code}>1 / 0.08 = 12.5</code> lượt nhấp để có một đơn hàng.</li>
-                <li style={guideStyles.li}>Điều này có nghĩa là, nếu một từ khóa nhận được <strong>13-15 clicks</strong> mà vẫn không có đơn hàng nào, nó đang hoạt động kém hơn mức trung bình và đó là một dấu hiệu mạnh mẽ để xem xét hành động (giảm bid hoặc phủ định).</li>
-            </ul>
-            <blockquote style={guideStyles.blockquote}>
-                <p style={guideStyles.p}><strong>Mẹo chuyên nghiệp:</strong> Hãy xem CVR trung bình của bạn trong báo cáo "Business Reports" trên Seller Central để có một con số khởi đầu tốt cho CVR mục tiêu của bạn.</p>
-            </blockquote>
-
-            <h2 style={guideStyles.h2}>4. Tự động hóa Điều chỉnh Bid: Chiến lược & Ví dụ</h2>
+            <p style={guideStyles.p}>Nếu CVR trung bình của sản phẩm bạn là <strong>8%</strong>, thì về mặt lý thuyết, bạn cần <code style={guideStyles.code}>1 / 0.08 = 12.5</code> lượt nhấp để có một đơn hàng. Nếu một từ khóa nhận được <strong>13-15 clicks</strong> mà vẫn không có đơn hàng nào, đó là một dấu hiệu mạnh mẽ để xem xét hành động.</p>
             
-            <h3 style={guideStyles.h3}>Chiến lược 1: Nền tảng - Cắt giảm Lãng phí & Bảo vệ Lợi nhuận</h3>
-            <p style={guideStyles.p}><strong>Mục tiêu:</strong> Nhanh chóng xác định và giảm chi tiêu cho các từ khóa/mục tiêu không mang lại bất kỳ doanh thu nào.</p>
-            <h4 style={guideStyles.h4}>Ví dụ: Rule "Cắt Lỗ Nhanh" cho Sản phẩm A ($9.99, Lợi nhuận $4.00)</h4>
-            <p style={guideStyles.p}><strong>Tên Rule:</strong> <code style={guideStyles.code}>[SP-A] Cắt Lỗ Nhanh</code></p>
-            <p style={guideStyles.p}><strong>Chiến lược:</strong> Nếu một từ khóa đã tiêu hết số tiền lợi nhuận tiềm năng ($4.00) mà không tạo ra đơn hàng, hãy giảm mạnh giá thầu.</p>
-            <p style={guideStyles.p}><strong>Cấu hình (<code style={guideStyles.code}>config</code>):</strong></p>
-            <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}><strong>Tần suất chạy:</strong> Mỗi 24 giờ.</li>
-                <li style={guideStyles.li}><strong>Thời gian chờ (Cooldown):</strong> 7 ngày.</li>
-                <li style={guideStyles.li}><strong>Logic:</strong></li>
-                <ul style={{paddingLeft: '20px'}}>
-                    <li><strong>NẾU</strong> (chi tiêu trong 30 ngày qua &gt; $4.00 <strong>VÀ</strong> số đơn hàng = 0) <strong>THÌ</strong> giảm bid đi 50% (nhưng không thấp hơn $0.15).</li>
-                </ul>
-            </ul>
-
-            <h3 style={guideStyles.h3}>Chiến lược 2: Tối ưu hóa Lợi nhuận (Profitability Optimization)</h3>
-            <p style={guideStyles.p}><strong>Mục tiêu:</strong> Tự động điều chỉnh các từ khóa đang hoạt động để đưa ACoS của chúng về gần với ACoS Mục tiêu.</p>
-            <h4 style={guideStyles.h4}>Ví dụ: Rule "Tối ưu ACoS theo Tầng" cho Sản phẩm C ($29.99, ACoS Mục tiêu ~20%)</h4>
+            <h2 style={guideStyles.h2}>4. Tự động hóa Điều chỉnh Bid: Chiến lược & Ví dụ</h2>
+            <p style={guideStyles.p}>Tự động điều chỉnh giá thầu để tối ưu hóa chi tiêu và lợi nhuận.</p>
+            <h4 style={guideStyles.h4}>Ví dụ: Rule "Tối ưu ACoS theo Tầng"</h4>
             <p style={guideStyles.p}><strong>Tên Rule:</strong> <code style={guideStyles.code}>[SP-C] Tối ưu ACoS theo Tầng</code></p>
-            <p style={guideStyles.p}><strong>Cấu hình (<code style={guideStyles.code}>config</code>):</strong></p>
             <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}><strong>Tần suất chạy:</strong> Mỗi 4 giờ.</li>
-                <li style={guideStyles.li}><strong>Thời gian chờ (Cooldown):</strong> 48 giờ.</li>
-                <li style={guideStyles.li}><strong>Các Nhóm Điều kiện (xét từ trên xuống):</strong></li>
+                <li style={guideStyles.li}><strong>Logic (xét từ trên xuống):</strong></li>
                 <ol style={{paddingLeft: '20px'}}>
                     <li style={guideStyles.li}><strong>NẾU</strong> (ACOS trong 30 ngày qua &gt; 40% <strong>VÀ</strong> chi tiêu &gt; $16) <strong>THÌ</strong> giảm bid đi 20%.</li>
                     <li style={guideStyles.li}><strong>HOẶC NẾU</strong> (ACOS trong 14 ngày qua &gt; 25%) <strong>THÌ</strong> giảm bid đi 10%.</li>
                     <li style={guideStyles.li}><strong>HOẶC NẾU</strong> (ACOS trong 14 ngày qua &lt; 15% <strong>VÀ</strong> số đơn hàng &gt; 1) <strong>THÌ</strong> tăng bid lên 8%.</li>
                 </ol>
             </ul>
-
+            
             <h2 style={guideStyles.h2}>5. Tự động hóa Search Term: Từ Phòng thủ đến Tấn công</h2>
             <p style={guideStyles.p}>Tự động hóa search term không chỉ là về việc "phòng thủ" (phủ định từ khóa xấu) mà còn là về việc "tấn công" (tìm kiếm và mở rộng các cơ hội mới).</p>
-            
-            <h3 style={guideStyles.h3}>5.1. Phủ định Search Term Lãng phí (Phòng thủ)</h3>
-            <p style={guideStyles.p}><strong>Mục tiêu:</strong> Giữ cho các chiến dịch của bạn luôn "sạch sẽ" bằng cách tự động loại bỏ các cụm từ tìm kiếm không liên quan hoặc không hiệu quả.</p>
-            <h4 style={guideStyles.h4}>Ví dụ 1: Phủ định dựa trên Chi tiêu Lãng phí</h4>
-            <p style={guideStyles.p}><strong>Tên Rule:</strong> <code style={guideStyles.code}>Phủ định theo Lợi nhuận</code></p>
-            <p style={guideStyles.p}><strong>Cấu hình (<code style={guideStyles.code}>config</code>):</strong></p>
-            <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}><strong>Tần suất chạy:</strong> Mỗi 48 giờ.</li>
-                <li style={guideStyles.li}><strong>Thời gian chờ (Cooldown):</strong> 90 ngày.</li>
-                <li style={guideStyles.li}><strong>Logic:</strong></li>
-                <ul style={{paddingLeft: '20px'}}>
-                    <li><strong>NẾU</strong> (chi tiêu trong 60 ngày qua &gt; $6.00 <strong>VÀ</strong> doanh số = 0) <strong>THÌ</strong> tạo một từ khóa phủ định chính xác (Negative Exact).</li>
-                </ul>
-            </ul>
-            
-            <h4 style={guideStyles.h4}>Ví dụ 2: Phủ định dựa trên Lượt nhấp không Chuyển đổi</h4>
+            <h4 style={guideStyles.h4}>Ví dụ: Phủ định dựa trên Lượt nhấp không Chuyển đổi</h4>
             <p style={guideStyles.p}><strong>Tên Rule:</strong> <code style={guideStyles.code}>Phủ định không chuyển đổi</code></p>
             <p style={guideStyles.p}><strong>Chiến lược:</strong> Sử dụng công thức Ngưỡng Click. Giả sử CVR mục tiêu của chúng ta là 7%, ngưỡng click sẽ là <code style={guideStyles.code}>1 / 0.07 ≈ 14</code>.</p>
-            <p style={guideStyles.p}><strong>Cấu hình (<code style={guideStyles.code}>config</code>):</strong></p>
             <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}><strong>Tần suất chạy:</strong> Mỗi 48 giờ.</li>
-                <li style={guideStyles.li}><strong>Thời gian chờ (Cooldown):</strong> 90 ngày.</li>
-                <li style={guideStyles.li}><strong>Logic:</strong></li>
+                <li><strong>Logic:</strong></li>
                 <ul style={{paddingLeft: '20px'}}>
                     <li><strong>NẾU</strong> (số lượt nhấp trong 30 ngày qua &gt; 14 <strong>VÀ</strong> số đơn hàng = 0) <strong>THÌ</strong> tạo một từ khóa phủ định cụm từ (Negative Phrase).</li>
                 </ul>
             </ul>
 
-            <h2 style={guideStyles.h2}>6. Tư duy Chiến lược Nâng cao - Khi ACoS không phải là tất cả</h2>
-            <p style={guideStyles.p}>Các quy tắc dựa trên ACoS là cực kỳ mạnh mẽ để tối ưu hóa lợi nhuận. Tuy nhiên, việc chỉ tập trung vào ACoS có thể là một cái bẫy. Một nhà quảng cáo chuyên nghiệp luôn nhìn vào bức tranh lớn hơn.</p>
-            
-            <h3 style={guideStyles.h3}>6.1. TACOS (Total ACoS) - Chỉ số Sức khỏe Thực sự</h3>
+            <h2 style={guideStyles.h2}>6. Tự động hóa Tăng tốc Ngân sách (Budget Acceleration)</h2>
+            <p style={guideStyles.p}><strong>Mục tiêu:</strong> Tự động tăng ngân sách cho các chiến dịch đang hoạt động cực kỳ hiệu quả <strong>trong ngày</strong> để không bỏ lỡ doanh thu khi nhu cầu tăng đột biến. Ngân sách sẽ tự động được khôi phục về giá trị ban đầu vào cuối ngày.</p>
+            <h4 style={guideStyles.h4}>Ví dụ: Rule "Tăng tốc khi ROAS cao"</h4>
+            <p style={guideStyles.p}><strong>Tên Rule:</strong> <code style={guideStyles.code}>[SP-B] Tăng tốc khi ROAS cao</code></p>
             <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}><strong>ACoS (Advertising Cost of Sales):</strong> <code style={guideStyles.code}>Chi tiêu Quảng cáo / Doanh số từ Quảng cáo</code>. Chỉ số này đo lường hiệu quả của <strong>chỉ riêng quảng cáo</strong>.</li>
-                <li style={guideStyles.li}><strong>TACOS (Total Advertising Cost of Sales):</strong> <code style={guideStyles.code}>Chi tiêu Quảng cáo / TỔNG Doanh số (cả quảng cáo và organic)</code>. Chỉ số này đo lường <strong>tác động tổng thể</strong> của quảng cáo lên toàn bộ doanh nghiệp của bạn.</li>
+                <li style={guideStyles.li}><strong>Loại Rule:</strong> `Budget Acceleration`</li>
+                <li style={guideStyles.li}><strong>Áp dụng cho:</strong> Chiến dịch Sản phẩm B (Ngân sách gốc $50/ngày)</li>
+                <li style={guideStyles.li}><strong>Tần suất chạy:</strong> Mỗi 30 phút.</li>
+                <li style={guideStyles.li}><strong>Logic:</strong>
+                    <ul style={{paddingLeft: '20px'}}>
+                        <li><strong>NẾU</strong> `ROAS (Today) > 2.5` <strong>VÀ</strong> `Budget Utilization % (Today) > 75%`</li>
+                        <li><strong>THÌ</strong> `Increase budget by 50%`</li>
+                    </ul>
+                </li>
             </ul>
-            <p style={guideStyles.p}><strong>Tại sao TACOS quan trọng?</strong></p>
-            <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}>Mục tiêu cuối cùng của quảng cáo là tạo ra "flywheel effect" (hiệu ứng bánh đà): quảng cáo thúc đẩy doanh số, tăng thứ hạng organic, từ đó dẫn đến nhiều doanh số organic hơn.</li>
-                <li style={guideStyles.li}>Một chiến dịch tốt có thể có ACoS tăng nhẹ, nhưng lại kéo doanh số organic tăng mạnh, dẫn đến <strong>TACOS giảm</strong>. Đây là một dấu hiệu cực kỳ tốt.</li>
-                <li style={guideStyles.li}>Ngược lại, nếu bạn "siết" ACoS quá chặt, bạn có thể mất hiển thị, giảm doanh số quảng cáo và làm tổn hại đến thứ hạng organic, dẫn đến <strong>TACOS tăng</strong>.</li>
-            </ul>
-            <blockquote style={guideStyles.blockquote}>
-                <p style={guideStyles.p}><strong>Lời khuyên của Chuyên gia:</strong> Hãy thường xuyên theo dõi chỉ số TACOS. Các rule tự động hóa của bạn nên nhằm mục tiêu giữ cho TACOS ổn định hoặc giảm dần theo thời gian.</p>
-            </blockquote>
+            <h4 style={guideStyles.h4}>Kịch bản</h4>
+            <p style={guideStyles.p}>Vào lúc 3 giờ chiều, hệ thống chạy và thấy rằng chiến dịch đã tiêu <strong>$40 (80%)</strong> và tạo ra <strong>$120 doanh số (ROAS = 3.0)</strong>. Tất cả điều kiện được thỏa mãn. Hệ thống sẽ ghi lại ngân sách gốc $50 và tăng ngân sách của chiến dịch lên <strong>$75</strong>. Vào 11:55 PM, một quy trình riêng sẽ đặt lại ngân sách về <strong>$50</strong> cho ngày mai.</p>
 
-            <h3 style={guideStyles.h3}>6.2. Bảo vệ các Từ khóa Chiến lược & Impression Share</h3>
-            <p style={guideStyles.p}>Không phải tất cả các từ khóa đều được tạo ra như nhau.</p>
+            <h2 style={guideStyles.h2}>7. Tư duy Chiến lược Nâng cao - Khi ACoS không phải là tất cả</h2>
+            <p style={guideStyles.p}>Các quy tắc dựa trên ACoS là cực kỳ mạnh mẽ để tối ưu hóa lợi nhuận. Tuy nhiên, việc chỉ tập trung vào ACoS có thể là một cái bẫy. Một nhà quảng cáo chuyên nghiệp luôn nhìn vào bức tranh lớn hơn.</p>
+            <h3 style={guideStyles.h3}>7.1. TACOS (Total ACoS) - Chỉ số Sức khỏe Thực sự</h3>
             <ul style={guideStyles.ul}>
-                <li style={guideStyles.li}><strong>Từ khóa "Thương hiệu" (Branded Keywords):</strong> Ví dụ "Nike shoes". Những từ khóa này có thể có ACoS cao hơn mục tiêu, nhưng việc giảm bid của chúng là một sai lầm chết người. Bạn cần phải chiếm lĩnh vị trí hàng đầu cho các từ khóa thương hiệu của mình để bảo vệ khỏi đối thủ cạnh tranh.</li>
-                <li style={guideStyles.li}><strong>Từ khóa "Hạng mục chính" (Main Category Keywords):</strong> Ví dụ "running shoes for men". Đây là những từ khóa có lưu lượng tìm kiếm cao nhất. Việc giảm bid của chúng chỉ vì ACoS cao hơn một chút có thể khiến bạn mất <strong>Impression Share</strong> (tỷ lệ hiển thị), nhường sân chơi cho đối thủ.</li>
+                <li style={guideStyles.li}><strong>ACoS:</strong> <code style={guideStyles.code}>Chi tiêu Quảng cáo / Doanh số từ Quảng cáo</code>. Đo lường hiệu quả của <strong>chỉ riêng quảng cáo</strong>.</li>
+                <li style={guideStyles.li}><strong>TACOS:</strong> <code style={guideStyles.code}>Chi tiêu Quảng cáo / TỔNG Doanh số</code>. Đo lường <strong>tác động tổng thể</strong> của quảng cáo lên toàn bộ doanh nghiệp.</li>
             </ul>
-            <blockquote style={guideStyles.blockquote}>
-                <p style={guideStyles.p}><strong>Lời khuyên của Chuyên gia:</strong></p>
-                <ol style={guideStyles.ol}>
-                    <li style={guideStyles.li}><strong>Tạo các Chiến dịch riêng:</strong> Hãy cân nhắc tạo các chiến dịch riêng cho các từ khóa "Thương hiệu" và "Chiến lược".</li>
-                    <li style={guideStyles.li}><strong>Không áp dụng Rule quá mạnh:</strong> <strong>KHÔNG</strong> áp dụng các rule giảm bid quá "hung hăng" cho các chiến dịch này. Mục tiêu ở đây là duy trì sự hiện diện và vị trí hàng đầu, không phải tối đa hóa lợi nhuận trên từng click.</li>
-                    <li style={guideStyles.li}><strong>Sử dụng Rule Tăng bid:</strong> Thay vào đó, bạn có thể tạo các rule để <strong>tăng bid</strong> nếu <strong>Top-of-Search Impression Share</strong> của bạn giảm xuống dưới một ngưỡng nhất định, đảm bảo bạn luôn ở vị trí mà khách hàng nhìn thấy đầu tiên.</li>
-                </ol>
-            </blockquote>
-            <p style={guideStyles.p}>Bằng cách kết hợp các rule tự động hóa dựa trên ACoS với một tư duy chiến lược rộng hơn, bạn sẽ xây dựng được một hệ thống không chỉ hiệu quả về mặt chi phí mà còn bền vững và thúc đẩy tăng trưởng dài hạn.</p>
+            <p style={guideStyles.p}>Mục tiêu cuối cùng của quảng cáo là tạo ra "flywheel effect": quảng cáo thúc đẩy doanh số, tăng thứ hạng organic, từ đó dẫn đến nhiều doanh số organic hơn. Một chiến dịch tốt có thể có ACoS tăng nhẹ, nhưng lại kéo doanh số organic tăng mạnh, dẫn đến <strong>TACOS giảm</strong>. Đây là một dấu hiệu cực kỳ tốt.</p>
+            
         </div>
     );
 }

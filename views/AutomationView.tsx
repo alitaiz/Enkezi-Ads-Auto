@@ -46,6 +46,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   thenBlock: { marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #eee' },
   thenHeader: { fontWeight: 'bold', fontSize: '1rem', marginBottom: '15px', color: '#333' },
   thenGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' },
+  infoBox: { backgroundColor: '#e6f7ff', border: '1px solid #91d5ff', borderRadius: 'var(--border-radius)', padding: '10px 15px', fontSize: '0.9rem', color: '#0050b3' }
 };
 
 const getDefaultCondition = (): AutomationRuleCondition => ({
@@ -67,6 +68,11 @@ const getDefaultSearchTermAction = (): AutomationRuleAction => ({
     matchType: 'NEGATIVE_EXACT' 
 });
 
+const getDefaultBudgetAccelerationAction = (): AutomationRuleAction => ({
+    type: 'increaseBudgetPercent',
+    value: 50
+});
+
 const getDefaultBidAdjustmentGroup = (): AutomationConditionGroup => ({
     conditions: [getDefaultCondition()],
     action: getDefaultBidAdjustmentAction()
@@ -78,6 +84,14 @@ const getDefaultSearchTermGroup = (): AutomationConditionGroup => ({
         { metric: 'sales', timeWindow: 60, operator: '=', value: 0 },
     ],
     action: getDefaultSearchTermAction()
+});
+
+const getDefaultBudgetAccelerationGroup = (): AutomationConditionGroup => ({
+    conditions: [
+        { metric: 'roas', timeWindow: 'TODAY', operator: '>', value: 2.5 },
+        { metric: 'budgetUtilization', timeWindow: 'TODAY', operator: '>', value: 75 },
+    ],
+    action: getDefaultBudgetAccelerationAction()
 });
 
 const getDefaultRuleConfig = () => ({
@@ -99,6 +113,18 @@ const getDefaultSearchTermRule = (): Partial<AutomationRule> => ({
     name: '',
     rule_type: 'SEARCH_TERM_AUTOMATION',
     config: { ...getDefaultRuleConfig(), conditionGroups: [getDefaultSearchTermGroup()] },
+    scope: { campaignIds: [] },
+    is_active: true,
+});
+
+const getDefaultBudgetAccelerationRule = (): Partial<AutomationRule> => ({
+    name: '',
+    rule_type: 'BUDGET_ACCELERATION',
+    config: {
+        conditionGroups: [getDefaultBudgetAccelerationGroup()],
+        frequency: { unit: 'minutes', value: 30 }, // Default to high frequency
+        cooldown: { unit: 'hours', value: 0 } // Cooldown is handled by the daily reset mechanism
+    },
     scope: { campaignIds: [] },
     is_active: true,
 });
@@ -190,8 +216,15 @@ export function AutomationView() {
 
   const filteredRules = rules.filter(r => 
       (activeTab === 'bidAdjustment' && r.rule_type === 'BID_ADJUSTMENT') ||
-      (activeTab === 'searchTerm' && r.rule_type === 'SEARCH_TERM_AUTOMATION')
+      (activeTab === 'searchTerm' && r.rule_type === 'SEARCH_TERM_AUTOMATION') ||
+      (activeTab === 'budgetAcceleration' && r.rule_type === 'BUDGET_ACCELERATION')
   );
+
+  const ruleTypeTitles = {
+      bidAdjustment: 'Bid Adjustment Rules',
+      searchTerm: 'Search Term Automation Rules',
+      budgetAcceleration: 'Budget Acceleration Rules'
+  };
 
   return (
     <div style={styles.container}>
@@ -200,28 +233,28 @@ export function AutomationView() {
       </header>
 
       <div style={styles.tabs}>
-        <button style={activeTab === 'bidAdjustment' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('bidAdjustment')}>Bid Adjustment Rules</button>
-        <button style={activeTab === 'searchTerm' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('searchTerm')}>Search Term Automation</button>
-        <button style={activeTab === 'history' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('history')}>Automation History</button>
-        <button style={activeTab === 'ruleGuide' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('ruleGuide')}>Rule Guide</button>
+        <button style={activeTab === 'bidAdjustment' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('bidAdjustment')}>Bid Adjustment</button>
+        <button style={activeTab === 'searchTerm' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('searchTerm')}>Search Term</button>
+        <button style={activeTab === 'budgetAcceleration' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('budgetAcceleration')}>Budget Acceleration</button>
+        <button style={activeTab === 'history' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('history')}>History</button>
+        <button style={activeTab === 'ruleGuide' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('ruleGuide')}>Guide</button>
       </div>
       
-      {activeTab !== 'history' && activeTab !== 'ruleGuide' && (
+      {['bidAdjustment', 'searchTerm', 'budgetAcceleration'].includes(activeTab) && (
           <div style={styles.contentHeader}>
-              <h2 style={styles.contentTitle}>{activeTab === 'bidAdjustment' ? 'Bid Adjustment Rules' : 'Search Term Automation Rules'}</h2>
+              <h2 style={styles.contentTitle}>{ruleTypeTitles[activeTab]}</h2>
               <button style={styles.primaryButton} onClick={() => handleOpenModal()}>+ Create New Rule</button>
           </div>
       )}
 
-      {activeTab === 'bidAdjustment' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
-      {activeTab === 'searchTerm' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
+      {activeTab !== 'history' && activeTab !== 'ruleGuide' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
       {activeTab === 'history' && <LogsTab logs={logs} loading={loading.logs} />}
       {activeTab === 'ruleGuide' && <RuleGuideContent />}
       
       {isModalOpen && (
           <RuleBuilderModal 
               rule={editingRule} 
-              ruleType={editingRule ? (editingRule.rule_type === 'BID_ADJUSTMENT' ? 'bidAdjustment' : 'searchTerm') : activeTab}
+              ruleType={editingRule ? editingRule.rule_type.toLowerCase().replace(/_/g, '') : activeTab}
               onClose={() => setIsModalOpen(false)}
               onSave={handleSaveRule}
           />
@@ -245,7 +278,7 @@ const RulesList = ({ rules, onEdit, onDelete, onDuplicate }: { rules: Automation
                     <span style={styles.ruleLabel}>Frequency</span>
                     <span style={styles.ruleValue}>Every {rule.config.frequency?.value || 1} {rule.config.frequency?.unit || 'hour'}(s)</span>
                     <span style={styles.ruleLabel}>Cooldown</span>
-                    <span style={styles.ruleValue}>{rule.config.cooldown?.value || 24} {rule.config.cooldown?.unit || 'hour'}(s)</span>
+                    <span style={styles.ruleValue}>{rule.config.cooldown?.value ?? 24} {rule.config.cooldown?.unit || 'hour'}(s)</span>
                     <span style={styles.ruleLabel}>Last Run</span>
                     <span style={styles.ruleValue}>{rule.last_run_at ? new Date(rule.last_run_at).toLocaleString() : 'Never'}</span>
                 </div>
@@ -285,7 +318,10 @@ const LogsTab = ({ logs, loading }: { logs: any[], loading: boolean}) => (
 const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: AutomationRule | null, ruleType: string, onClose: () => void, onSave: (data: any) => void }) => {
     const [formData, setFormData] = useState<Partial<AutomationRule>>(() => {
         if (rule) return JSON.parse(JSON.stringify(rule));
-        return ruleType === 'bidAdjustment' ? getDefaultBidAdjustmentRule() : getDefaultSearchTermRule();
+        if (ruleType === 'bidadjustment') return getDefaultBidAdjustmentRule();
+        if (ruleType === 'searchTerm') return getDefaultSearchTermRule();
+        if (ruleType === 'budgetacceleration') return getDefaultBudgetAccelerationRule();
+        return getDefaultBidAdjustmentRule();
     });
 
     const handleConfigChange = (field: string, value: any) => {
@@ -327,7 +363,12 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
     
     const addConditionGroup = () => {
         setFormData(prev => {
-            const newGroup = ruleType === 'bidAdjustment' ? getDefaultBidAdjustmentGroup() : getDefaultSearchTermGroup();
+            let newGroup;
+            if (ruleType === 'bidadjustment') newGroup = getDefaultBidAdjustmentGroup();
+            else if (ruleType === 'searchTerm') newGroup = getDefaultSearchTermGroup();
+            else if (ruleType === 'budgetacceleration') newGroup = getDefaultBudgetAccelerationGroup();
+            else newGroup = getDefaultBidAdjustmentGroup();
+            
             const newGroups = [...prev.config!.conditionGroups, newGroup];
             return { ...prev, config: { ...prev.config!, conditionGroups: newGroups } };
         });
@@ -341,7 +382,11 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
         });
     };
 
-    const modalTitle = ruleType === 'bidAdjustment' ? 'Edit Bid Adjustment Rule' : 'Edit Search Term Rule';
+    const modalTitle = {
+        'bidadjustment': 'Edit Bid Adjustment Rule',
+        'searchTerm': 'Edit Search Term Rule',
+        'budgetacceleration': 'Edit Budget Acceleration Rule'
+    }[ruleType] || 'Edit Rule';
 
     return (
         <div style={styles.modalBackdrop} onClick={onClose}>
@@ -377,8 +422,8 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                                 const newUnit = e.target.value as any;
                                                 const currentFrequency = formData.config?.frequency || { value: 1 };
                                                 const newFrequency = { ...currentFrequency, unit: newUnit };
-                                                if (newUnit === 'days' && !newFrequency.startTime) {
-                                                    newFrequency.startTime = '01:00'; // Default start time
+                                                if (newUnit === 'days' && !(newFrequency as any).startTime) {
+                                                    (newFrequency as any).startTime = '01:00'; // Default start time
                                                 }
                                                 handleConfigChange('frequency', newFrequency);
                                             }}
@@ -400,18 +445,22 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                             min="0"
                                             onChange={e => handleConfigChange('cooldown', { ...formData.config?.cooldown, value: Number(e.target.value) })}
                                             required
+                                            disabled={ruleType === 'budgetacceleration'}
                                         />
                                         <select
                                             style={{...styles.input, flex: 1}}
                                             value={formData.config?.cooldown?.unit || 'hours'}
                                             onChange={e => handleConfigChange('cooldown', { ...formData.config?.cooldown, unit: e.target.value as any })}
+                                            disabled={ruleType === 'budgetacceleration'}
                                         >
                                             <option value="minutes">Minute(s)</option>
                                             <option value="hours">Hour(s)</option>
                                             <option value="days">Day(s)</option>
                                         </select>
                                     </div>
-                                    <p style={{fontSize: '0.8rem', color: '#666', margin: '5px 0 0 0'}}>After acting on an item, wait this long before acting on it again. Set to 0 to disable.</p>
+                                    <p style={{fontSize: '0.8rem', color: '#666', margin: '5px 0 0 0'}}>
+                                        {ruleType === 'budgetacceleration' ? 'Cooldown is handled by the daily reset mechanism.' : 'After acting on an item, wait this long before acting on it again. Set to 0 to disable.'}
+                                    </p>
                                 </div>
                             </div>
 
@@ -422,9 +471,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                         <input
                                             type="time"
                                             style={{...styles.input, width: '150px'}}
-                                            // FIX: Cast frequency to 'any' to bypass TypeScript's incorrect type inference, which caused a compile error.
-                                            // The application logic ensures 'startTime' is available when the unit is 'days'.
-                                            value={(formData.config.frequency as any)?.startTime || '01:00'}
+                                            value={(formData.config.frequency as any).startTime || '01:00'}
                                             onChange={e => handleConfigChange('frequency', { ...(formData.config.frequency as any), startTime: e.target.value })}
                                             required
                                         />
@@ -447,16 +494,32 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                     {group.conditions.map((cond, condIndex) => (
                                         <div key={condIndex} style={styles.conditionRow}>
                                            <select style={styles.conditionInput} value={cond.metric} onChange={e => handleConditionChange(groupIndex, condIndex, 'metric', e.target.value)}>
-                                                <option value="spend">Spend</option>
-                                                <option value="sales">Sales</option>
-                                                <option value="acos">ACOS</option>
-                                                <option value="orders">Orders</option>
-                                                <option value="clicks">Clicks</option>
-                                                <option value="impressions">Impressions</option>
+                                                {ruleType === 'budgetacceleration' ? (
+                                                    <>
+                                                        <option value="roas">ROAS</option>
+                                                        <option value="acos">ACoS</option>
+                                                        <option value="sales">Sales</option>
+                                                        <option value="orders">Orders</option>
+                                                        <option value="budgetUtilization">Budget Utilization %</option>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <option value="spend">Spend</option>
+                                                        <option value="sales">Sales</option>
+                                                        <option value="acos">ACOS</option>
+                                                        <option value="orders">Orders</option>
+                                                        <option value="clicks">Clicks</option>
+                                                        <option value="impressions">Impressions</option>
+                                                    </>
+                                                )}
                                             </select>
                                             <span style={styles.conditionText}>in last</span>
-                                            <input type="number" min="1" max="90" style={{...styles.conditionInput, width: '60px'}} value={cond.timeWindow} onChange={e => handleConditionChange(groupIndex, condIndex, 'timeWindow', Number(e.target.value))} required />
-                                            <span style={styles.conditionText}>days</span>
+                                            {ruleType === 'budgetacceleration' ? (
+                                                <input style={{...styles.conditionInput, width: '60px', textAlign: 'center'}} value="Today" disabled />
+                                            ) : (
+                                                <input type="number" min="1" max="90" style={{...styles.conditionInput, width: '60px'}} value={cond.timeWindow} onChange={e => handleConditionChange(groupIndex, condIndex, 'timeWindow', Number(e.target.value))} required />
+                                            )}
+                                            <span style={styles.conditionText}>{ruleType !== 'budgetacceleration' && 'days'}</span>
                                             <select style={{...styles.conditionInput, width: '60px'}} value={cond.operator} onChange={e => handleConditionChange(groupIndex, condIndex, 'operator', e.target.value)}>
                                                 <option value=">">&gt;</option> <option value="<">&lt;</option> <option value="=">=</option>
                                             </select>
@@ -468,7 +531,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                 
                                      <div style={styles.thenBlock}>
                                         <h4 style={styles.thenHeader}>THEN</h4>
-                                        {ruleType === 'bidAdjustment' && (
+                                        {ruleType === 'bidadjustment' && (
                                             <div style={styles.thenGrid}>
                                                 <div style={styles.formGroup}>
                                                     <label style={styles.label}>Action</label>
@@ -519,6 +582,26 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                                     </select>
                                                 </div>
                                             </div>
+                                        )}
+                                        {ruleType === 'budgetacceleration' && (
+                                            <>
+                                            <div style={styles.thenGrid}>
+                                                 <div style={styles.formGroup}>
+                                                    <label style={styles.label}>Action</label>
+                                                    <select style={styles.input} value={group.action.type} onChange={e => handleActionChange(groupIndex, 'type', e.target.value)}>
+                                                        <option value="increaseBudgetPercent">Increase Budget By (%)</option>
+                                                        <option value="setBudgetAmount">Set Budget To ($)</option>
+                                                    </select>
+                                                </div>
+                                                <div style={styles.formGroup}>
+                                                    <label style={styles.label}>Value</label>
+                                                    <input type="number" step="0.01" style={styles.input} value={group.action.value} onChange={e => handleActionChange(groupIndex, 'value', Number(e.target.value))} required />
+                                                </div>
+                                            </div>
+                                            <div style={{...styles.infoBox, marginTop: '15px'}}>
+                                                ℹ️ Budgets will be automatically restored to their original values at the end of the day.
+                                            </div>
+                                            </>
                                         )}
                                     </div>
                                 </div>

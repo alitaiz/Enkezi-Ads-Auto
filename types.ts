@@ -74,14 +74,14 @@ export interface SummaryMetricsData {
 }
 
 export interface AutomationRuleCondition {
-    metric: 'spend' | 'sales' | 'acos' | 'orders' | 'clicks' | 'impressions';
-    timeWindow: number;
+    metric: 'spend' | 'sales' | 'acos' | 'orders' | 'clicks' | 'impressions' | 'roas' | 'budgetUtilization';
+    timeWindow: number | 'TODAY';
     operator: '>' | '<' | '=';
     value: number;
 }
 
 export interface AutomationRuleAction {
-    type: 'adjustBidPercent' | 'negateSearchTerm';
+    type: 'adjustBidPercent' | 'negateSearchTerm' | 'increaseBudgetPercent' | 'setBudgetAmount';
     value?: number;
     matchType?: 'NEGATIVE_EXACT' | 'NEGATIVE_PHRASE';
     minBid?: number;
@@ -97,7 +97,7 @@ export interface AutomationConditionGroup {
 export interface AutomationRule {
     id: number;
     name: string;
-    rule_type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION';
+    rule_type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION' | 'BUDGET_ACCELERATION';
     config: {
         // A rule is composed of one or more condition groups.
         // They are evaluated in order ("first match wins").
