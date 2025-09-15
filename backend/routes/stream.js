@@ -185,14 +185,13 @@ router.get('/stream/campaign-metrics', async (req, res) => {
         
         const metrics = result.rows
             .map(row => {
-                if (!row.campaignId) return null;
-                const campaignIdNumber = Number(row.campaignId);
-                if (!campaignIdNumber || isNaN(campaignIdNumber)) {
-                    console.warn(`[Stream Metrics] Filtering out invalid campaign ID from DB: ${row.campaignId}`);
+                const campaignIdStr = row.campaignId;
+                if (!campaignIdStr) {
+                    console.warn(`[Stream Metrics] Filtering out null/empty campaign ID from DB.`);
                     return null;
                 }
                 return {
-                    campaignId: campaignIdNumber,
+                    campaignId: campaignIdStr, // CRITICAL FIX: Return ID as a string to prevent precision loss.
                     impressions: parseInt(row.impressions || '0', 10),
                     clicks: parseInt(row.clicks || '0', 10),
                     spend: parseFloat(row.spend || '0'),
