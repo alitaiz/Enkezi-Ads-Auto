@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { CampaignWithMetrics, CampaignState, AutomationRule } from '../../types';
 import { formatPrice, formatNumber, formatPercent } from '../../utils';
 
@@ -12,6 +12,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     table: {
         width: '100%',
         borderCollapse: 'collapse',
+        tableLayout: 'fixed', // Important for resizable columns
     },
     th: {
         padding: '12px 15px',
@@ -19,9 +20,10 @@ const styles: { [key: string]: React.CSSProperties } = {
         borderBottom: '2px solid var(--border-color)',
         backgroundColor: '#f8f9fa',
         fontWeight: 600,
-        cursor: 'pointer',
         position: 'relative',
         whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
     },
     sortIcon: {
         marginLeft: '5px',
@@ -131,6 +133,75 @@ const styles: { [key: string]: React.CSSProperties } = {
 
 type SortableKeys = keyof CampaignWithMetrics;
 
+// --- Resizable Column Logic ---
+
+const resizerStyles: { [key: string]: React.CSSProperties } = {
+  resizer: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    height: '100%',
+    width: '5px',
+    cursor: 'col-resize',
+    userSelect: 'none',
+    touchAction: 'none',
+  },
+  resizing: {
+    background: 'var(--primary-color)',
+  }
+};
+
+function useResizableColumns(initialWidths: number[]) {
+    const [widths, setWidths] = useState(initialWidths);
+    // FIX: Add state to track which column is being resized, so the component can re-render to apply styles.
+    const [resizingColumnIndex, setResizingColumnIndex] = useState<number | null>(null);
+    const currentColumnIndex = useRef<number | null>(null);
+    const startX = useRef(0);
+    const startWidth = useRef(0);
+
+    const handleMouseDown = useCallback((index: number, e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        currentColumnIndex.current = index;
+        setResizingColumnIndex(index);
+        startX.current = e.clientX;
+        startWidth.current = widths[index];
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, [widths]);
+
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (currentColumnIndex.current === null) return;
+        
+        const deltaX = e.clientX - startX.current;
+        const newWidth = Math.max(startWidth.current + deltaX, 80); // Minimum width 80px
+
+        setWidths(prevWidths => {
+            const newWidths = [...prevWidths];
+            newWidths[currentColumnIndex.current!] = newWidth;
+            return newWidths;
+        });
+    }, []);
+
+    const handleMouseUp = useCallback(() => {
+        currentColumnIndex.current = null;
+        setResizingColumnIndex(null);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    }, []);
+
+    useEffect(() => {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [handleMouseMove, handleMouseUp]);
+
+    return { widths, getHeaderProps: handleMouseDown, resizingColumnIndex };
+}
+
 
 // Interfaces for the new, structured log details
 interface TriggeringMetric {
@@ -182,22 +253,6 @@ interface CampaignTableProps {
     isAllSelected: boolean;
 }
 
-const SortableHeader = ({
-    label, sortKey, sortConfig, onRequestSort,
-}: {
-    label: string; sortKey: SortableKeys; sortConfig: CampaignTableProps['sortConfig']; onRequestSort: CampaignTableProps['onRequestSort'];
-}) => {
-    const isSorted = sortConfig?.key === sortKey;
-    const directionIcon = sortConfig?.direction === 'ascending' ? '▲' : '▼';
-
-    return (
-        <th style={styles.th} onClick={() => onRequestSort(sortKey)}>
-            {label}
-            {isSorted && <span style={styles.sortIcon}>{directionIcon}</span>}
-        </th>
-    );
-};
-
 export function CampaignTable({
     campaigns, onUpdateCampaign, onEditRules, sortConfig, onRequestSort,
     expandedCampaignId, onToggleExpand, automationLogs, loadingLogs, logsError,
@@ -209,6 +264,27 @@ export function CampaignTable({
 
     const bidAdjustmentRules = useMemo(() => automationRules.filter(r => r.rule_type === 'BID_ADJUSTMENT'), [automationRules]);
     const searchTermRules = useMemo(() => automationRules.filter(r => r.rule_type === 'SEARCH_TERM_AUTOMATION'), [automationRules]);
+
+    const resizableColumns = useMemo(() => [
+        { id: 'name', label: 'Campaign Name', isSortable: true },
+        { id: 'state', label: 'Status', isSortable: true },
+        { id: 'dailyBudget', label: 'Daily Budget', isSortable: true },
+        { id: 'spend', label: 'Spend', isSortable: true },
+        { id: 'sales', label: 'Sales', isSortable: true },
+        { id: 'orders', label: 'Orders', isSortable: true },
+        { id: 'impressions', label: 'Impressions', isSortable: true },
+        { id: 'clicks', label: 'Clicks', isSortable: true },
+        { id: 'acos', label: 'ACoS', isSortable: true },
+        { id: 'roas', label: 'RoAS', isSortable: true },
+        { id: 'bidAdjustmentRule', label: 'Bid Adjustment Rule', isSortable: false },
+        { id: 'searchTermRule', label: 'Search Term Rule', isSortable: false },
+    ], []);
+
+    const initialWidths = useMemo(() => [
+        300, 100, 120, 100, 100, 100, 110, 100, 100, 100, 220, 220
+    ], []);
+
+    const { widths, getHeaderProps, resizingColumnIndex } = useResizableColumns(initialWidths);
 
     const handleCellClick = (campaign: CampaignWithMetrics, field: 'state' | 'budget') => {
         setEditingCell({ id: campaign.campaignId, field });
@@ -320,29 +396,20 @@ export function CampaignTable({
         );
     };
     
-    const totalColumns = 13;
+    const totalColumns = resizableColumns.length + 1;
     
     return (
         <div style={styles.tableContainer}>
             <table style={styles.table}>
-                 <colgroup>
+                <colgroup>
                     <col style={{ width: '40px' }} />
-                    <col style={{ width: '20%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '8%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '8%' }} />
-                    <col style={{ width: '8%' }} />
+                    {widths.map((width, index) => (
+                        <col key={index} style={{ width: `${width}px` }} />
+                    ))}
                 </colgroup>
                 <thead>
                     <tr>
-                        <th style={styles.th}>
+                        <th style={{...styles.th, width: '40px'}}>
                             <input
                                 type="checkbox"
                                 onChange={(e) => onSelectAll(e.target.checked)}
@@ -350,18 +417,25 @@ export function CampaignTable({
                                 aria-label="Select all campaigns"
                             />
                         </th>
-                        <SortableHeader label="Campaign Name" sortKey="name" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="Status" sortKey="state" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="Daily Budget" sortKey="dailyBudget" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="Spend" sortKey="spend" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="Sales" sortKey="sales" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="Orders" sortKey="orders" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="Impressions" sortKey="impressions" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="Clicks" sortKey="clicks" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="ACoS" sortKey="acos" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <SortableHeader label="RoAS" sortKey="roas" sortConfig={sortConfig} onRequestSort={onRequestSort} />
-                        <th style={styles.th}>Bid Adjustment Rule</th>
-                        <th style={styles.th}>Search Term Rule</th>
+                        {resizableColumns.map((col, index) => {
+                            const isSorted = sortConfig?.key === col.id;
+                            const directionIcon = sortConfig?.direction === 'ascending' ? '▲' : '▼';
+                            return (
+                                <th key={col.id} style={styles.th}>
+                                    <div
+                                        onClick={() => col.isSortable && onRequestSort(col.id as SortableKeys)}
+                                        style={{ display: 'flex', alignItems: 'center', cursor: col.isSortable ? 'pointer' : 'default' }}
+                                    >
+                                        {col.label}
+                                        {isSorted && <span style={styles.sortIcon}>{directionIcon}</span>}
+                                    </div>
+                                    <div
+                                        style={{...resizerStyles.resizer, ...(resizingColumnIndex === index ? resizerStyles.resizing : {})}}
+                                        onMouseDown={(e) => getHeaderProps(index, e)}
+                                    />
+                                </th>
+                            )
+                        })}
                     </tr>
                 </thead>
                 <tbody>
