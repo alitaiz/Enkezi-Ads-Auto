@@ -142,6 +142,23 @@ export function AutomationView() {
     setIsModalOpen(true);
   };
 
+  const handleDuplicateRule = (ruleToDuplicate: AutomationRule) => {
+    // Create a deep copy to avoid any state mutation issues
+    const newRule = JSON.parse(JSON.stringify(ruleToDuplicate));
+
+    // Remove properties that are specific to an existing rule instance
+    delete newRule.id;
+    delete newRule.last_run_at;
+
+    // Update the name to indicate it's a copy
+    newRule.name = `${newRule.name} - Copy`;
+
+    // The modal will now open pre-filled with this data.
+    // When saved, `handleSaveRule` will see it has no 'id' and will perform a 'POST' (create).
+    setEditingRule(newRule);
+    setIsModalOpen(true);
+  };
+
   const handleSaveRule = async (formData: AutomationRule) => {
     const { id, ...data } = formData;
     const method = id ? 'PUT' : 'POST';
@@ -196,8 +213,8 @@ export function AutomationView() {
           </div>
       )}
 
-      {activeTab === 'bidAdjustment' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} />}
-      {activeTab === 'searchTerm' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} />}
+      {activeTab === 'bidAdjustment' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
+      {activeTab === 'searchTerm' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
       {activeTab === 'history' && <LogsTab logs={logs} loading={loading.logs} />}
       {activeTab === 'ruleGuide' && <RuleGuideContent />}
       
@@ -213,7 +230,7 @@ export function AutomationView() {
   );
 }
 
-const RulesList = ({ rules, onEdit, onDelete }: { rules: AutomationRule[], onEdit: (rule: AutomationRule) => void, onDelete: (id: number) => void}) => (
+const RulesList = ({ rules, onEdit, onDelete, onDuplicate }: { rules: AutomationRule[], onEdit: (rule: AutomationRule) => void, onDelete: (id: number) => void, onDuplicate: (rule: AutomationRule) => void }) => (
     <div style={styles.rulesGrid}>
         {rules.map(rule => (
             <div key={rule.id} style={styles.ruleCard}>
@@ -234,6 +251,7 @@ const RulesList = ({ rules, onEdit, onDelete }: { rules: AutomationRule[], onEdi
                 </div>
                 <div style={styles.ruleActions}>
                     <button style={styles.button} onClick={() => onEdit(rule)}>Edit</button>
+                    <button style={styles.button} onClick={() => onDuplicate(rule)}>Duplicate</button>
                     <button style={{...styles.button, ...styles.dangerButton}} onClick={() => onDelete(rule.id)}>Delete</button>
                 </div>
             </div>
