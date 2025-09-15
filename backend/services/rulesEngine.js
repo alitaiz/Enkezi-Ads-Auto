@@ -653,13 +653,8 @@ const isRuleDue = (rule) => {
         const diffTime = startOfTodayInTz.getTime() - startOfLastRunDayInTz.getTime();
         const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-        // If not enough full days have passed, it's not due.
-        if (diffDays < frequency.value) {
-            return false;
-        }
-
-        // If enough days have passed, it's due because we are already past today's scheduled time.
-        return true;
+        // It's only due if enough full days have passed
+        return diffDays >= frequency.value;
     }
 
     return false;

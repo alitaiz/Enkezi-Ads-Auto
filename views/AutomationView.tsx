@@ -375,9 +375,6 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                             value={formData.config?.frequency?.unit || 'hours'}
                                             onChange={e => {
                                                 const newUnit = e.target.value as any;
-                                                // FIX: Ensure the `value` property is always present in the new frequency object
-                                                // to maintain type integrity. If `formData.config.frequency` is undefined,
-                                                // `currentFrequency` becomes `{}`, and without this fix, the `value` property would be lost.
                                                 const currentFrequency = formData.config?.frequency || { value: 1 };
                                                 const newFrequency = { ...currentFrequency, unit: newUnit };
                                                 if (newUnit === 'days' && !newFrequency.startTime) {
@@ -425,14 +422,13 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                         <input
                                             type="time"
                                             style={{...styles.input, width: '150px'}}
-                                            // FIX: The type of `formData.config.frequency` can be a union of shapes, some of which
-                                            // don't include `startTime`. We cast it to `any` to satisfy TypeScript within this
-                                            // rendering block, which only appears when unit is 'days'.
-                                            value={(formData.config?.frequency as any)?.startTime || '01:00'}
-                                            onChange={e => handleConfigChange('frequency', { ...(formData.config!.frequency as any), startTime: e.target.value })}
+                                            // FIX: The type of formData.config.frequency is a complex union. Cast to a type with an optional startTime property to allow safe access.
+                                            value={(formData.config.frequency as { startTime?: string })?.startTime || '01:00'}
+                                            // FIX: Cast frequency to a generic object for spreading to avoid type errors with the union type.
+                                            onChange={e => handleConfigChange('frequency', { ...(formData.config.frequency as object), startTime: e.target.value })}
                                             required
                                         />
-                                        <p style={{fontSize: '0.8rem', color: '#666', margin: 0}}>Rule will run after this time, every {formData.config!.frequency!.value} day(s).</p>
+                                        <p style={{fontSize: '0.8rem', color: '#666', margin: 0}}>Rule will run after this time, every {formData.config.frequency.value} day(s).</p>
                                     </div>
                                 </div>
                             )}
