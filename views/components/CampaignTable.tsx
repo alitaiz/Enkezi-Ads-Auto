@@ -122,6 +122,10 @@ const styles: { [key: string]: React.CSSProperties } = {
     noRuleText: {
         color: '#6c757d',
         fontStyle: 'italic',
+    },
+    editRuleButton: {
+        background: 'none', border: 'none', cursor: 'pointer',
+        padding: '0 5px', fontSize: '1rem', marginLeft: '8px',
     }
 };
 
@@ -163,6 +167,7 @@ interface AutomationLog {
 interface CampaignTableProps {
     campaigns: CampaignWithMetrics[];
     onUpdateCampaign: (campaignId: number, update: { state?: CampaignState; budget?: { amount: number } }) => void;
+    onEditRules: (campaignId: number, ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION') => void;
     sortConfig: { key: SortableKeys; direction: 'ascending' | 'descending' } | null;
     onRequestSort: (key: SortableKeys) => void;
     expandedCampaignId: number | null;
@@ -194,7 +199,7 @@ const SortableHeader = ({
 };
 
 export function CampaignTable({
-    campaigns, onUpdateCampaign, sortConfig, onRequestSort,
+    campaigns, onUpdateCampaign, onEditRules, sortConfig, onRequestSort,
     expandedCampaignId, onToggleExpand, automationLogs, loadingLogs, logsError,
     automationRules,
     selectedCampaignIds, onSelectCampaign, onSelectAll, isAllSelected
@@ -402,25 +407,31 @@ export function CampaignTable({
                                 <td style={styles.td}>{formatPercent(campaign.acos)}</td>
                                 <td style={styles.td}>{formatRoAS(campaign.roas)}</td>
                                 <td style={styles.td}>
-                                    <div style={styles.ruleTagContainer}>
-                                        {currentBidRules.length > 0 ? (
-                                            currentBidRules.map(rule => (
-                                                <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
-                                            ))
-                                        ) : (
-                                            <span style={styles.noRuleText}>-- No Rule --</span>
-                                        )}
+                                     <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                                        <div style={styles.ruleTagContainer}>
+                                            {currentBidRules.length > 0 ? (
+                                                currentBidRules.map(rule => (
+                                                    <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
+                                                ))
+                                            ) : (
+                                                <span style={styles.noRuleText}>-- No Rule --</span>
+                                            )}
+                                        </div>
+                                        <button onClick={() => onEditRules(campaign.campaignId, 'BID_ADJUSTMENT')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
                                     </div>
                                 </td>
                                  <td style={styles.td}>
-                                     <div style={styles.ruleTagContainer}>
-                                        {currentSearchTermRules.length > 0 ? (
-                                            currentSearchTermRules.map(rule => (
-                                                <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
-                                            ))
-                                        ) : (
-                                            <span style={styles.noRuleText}>-- No Rule --</span>
-                                        )}
+                                     <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                                         <div style={styles.ruleTagContainer}>
+                                            {currentSearchTermRules.length > 0 ? (
+                                                currentSearchTermRules.map(rule => (
+                                                    <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
+                                                ))
+                                            ) : (
+                                                <span style={styles.noRuleText}>-- No Rule --</span>
+                                            )}
+                                        </div>
+                                        <button onClick={() => onEditRules(campaign.campaignId, 'SEARCH_TERM_AUTOMATION')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
                                     </div>
                                 </td>
                             </tr>

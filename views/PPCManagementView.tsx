@@ -78,10 +78,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     bulkActionContainer: {
         display: 'flex',
         alignItems: 'center',
-        gap: '15px',
-        paddingLeft: '20px',
+        gap: '10px',
+        paddingLeft: '15px',
         marginLeft: 'auto',
         borderLeft: '2px solid var(--border-color)',
+        flexWrap: 'wrap'
     },
     bulkActionButton: {
         padding: '8px 16px',
@@ -90,21 +91,30 @@ const styles: { [key: string]: React.CSSProperties } = {
         border: 'none',
         borderRadius: '4px',
         cursor: 'pointer',
-        fontWeight: '500'
+        fontWeight: '500',
+        height: '40px',
     },
+    multiSelect: {
+        border: '1px solid var(--border-color)',
+        borderRadius: '4px',
+        padding: '5px',
+        height: '80px',
+    },
+    modalBackdrop: {
+        position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+        backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex',
+        justifyContent: 'center', alignItems: 'center', zIndex: 1000
+    },
+    modalContent: {
+        backgroundColor: 'var(--card-background-color)', padding: '25px',
+        borderRadius: 'var(--border-radius)', width: '90%', maxWidth: '500px',
+        maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: '20px'
+    },
+    modalHeader: { fontSize: '1.5rem', margin: 0, paddingBottom: '10px', borderBottom: '1px solid var(--border-color)' },
+    modalBody: { overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' },
+    modalFooter: { display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '15px' },
+    checkboxLabel: { display: 'block', padding: '8px', borderRadius: '4px', cursor: 'pointer', userSelect: 'none' },
 };
-
-const ITEMS_PER_PAGE = 20;
-type SortableKeys = keyof CampaignWithMetrics;
-
-interface AutomationLog {
-    id: number;
-    rule_name: string;
-    run_at: string;
-    status: string;
-    summary: string;
-    details: any;
-}
 
 const getInitialDateRange = () => {
     const end = new Date();
@@ -121,6 +131,58 @@ const formatDateForQuery = (d: Date) => {
     return `${year}-${month}-${day}`;
 };
 
+const RuleEditModal = ({ isOpen, onClose, campaign, allRules, onSave }: { isOpen: boolean, onClose: () => void, campaign: {id: number; name: string; type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION'} | null, allRules: AutomationRule[], onSave: (campaignId: number, initialIds: Set<number>, newIds: Set<number>) => void }) => {
+    if (!isOpen || !campaign) return null;
+
+    const relevantRules = allRules.filter(r => r.rule_type === campaign.type);
+    
+    const initialSelectedIds = useMemo(() => new Set(
+        relevantRules.filter(r => r.scope.campaignIds?.some(id => Number(id) === campaign.id)).map(r => r.id)
+    ), [relevantRules, campaign.id]);
+
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(initialSelectedIds);
+
+    const handleToggle = (ruleId: number) => {
+        setSelectedIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(ruleId)) newSet.delete(ruleId);
+            else newSet.add(ruleId);
+            return newSet;
+        });
+    };
+
+    const handleSave = () => {
+        onSave(campaign.id, initialSelectedIds, selectedIds);
+    };
+
+    return (
+        <div style={styles.modalBackdrop} onClick={onClose}>
+            <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                <h2 style={styles.modalHeader}>Edit Rules for "{campaign.name}"</h2>
+                <div style={styles.modalBody}>
+                    {relevantRules.length > 0 ? relevantRules.map(rule => (
+                        <label key={rule.id} style={styles.checkboxLabel}>
+                            <input
+                                type="checkbox"
+                                checked={selectedIds.has(rule.id)}
+                                onChange={() => handleToggle(rule.id)}
+                                style={{ marginRight: '10px' }}
+                            />
+                            {rule.name}
+                        </label>
+                    )) : <p>No {campaign.type === 'BID_ADJUSTMENT' ? 'Bid Adjustment' : 'Search Term'} rules found for this profile.</p>}
+                </div>
+                <div style={styles.modalFooter}>
+                    <button onClick={onClose} style={{...styles.bulkActionButton, backgroundColor: '#6c757d'}}>Cancel</button>
+                    <button onClick={handleSave} style={styles.bulkActionButton}>Save Changes</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// FIX: Define a constant for the number of items to display per page for pagination.
+const ITEMS_PER_PAGE = 50;
 
 export function PPCManagementView() {
     const { cache, setCache } = useContext(DataCacheContext);
@@ -140,19 +202,22 @@ export function PPCManagementView() {
 
     const [currentPage, setCurrentPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: SortableKeys; direction: 'ascending' | 'descending' } | null>({ key: 'spend', direction: 'descending' });
+    const [sortConfig, setSortConfig] = useState<{ key: keyof CampaignWithMetrics; direction: 'ascending' | 'descending' } | null>({ key: 'spend', direction: 'descending' });
     const [statusFilter, setStatusFilter] = useState<CampaignState | 'all'>('enabled');
     
-    // State for expanded automation logs
     const [expandedCampaignId, setExpandedCampaignId] = useState<number | null>(null);
-    const [automationLogs, setAutomationLogs] = useState<Record<number, AutomationLog[]>>({});
+    const [automationLogs, setAutomationLogs] = useState<Record<number, any[]>>({});
     const [loadingLogs, setLoadingLogs] = useState<number | null>(null);
     const [logsError, setLogsError] = useState<string | null>(null);
 
-    // State for bulk actions
     const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<number>>(new Set());
-    const [selectedBulkBidRule, setSelectedBulkBidRule] = useState<string>('none');
-    const [selectedBulkSearchTermRule, setSelectedBulkSearchTermRule] = useState<string>('none');
+    const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+    const [editingCampaign, setEditingCampaign] = useState<{id: number; name: string; type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION'} | null>(null);
+
+    // New state for redesigned bulk actions
+    const [bulkAction, setBulkAction] = useState<'none' | 'add' | 'remove'>('none');
+    const [bulkSelectedBidRules, setBulkSelectedBidRules] = useState<string[]>([]);
+    const [bulkSelectedSearchTermRules, setBulkSelectedSearchTermRules] = useState<string[]>([]);
 
 
     useEffect(() => {
@@ -206,7 +271,7 @@ export function PPCManagementView() {
         setLoading(prev => ({ ...prev, data: true }));
         setError(null);
         setCurrentPage(1);
-        setSelectedCampaignIds(new Set()); // Clear selection on data reload
+        setSelectedCampaignIds(new Set());
 
         const formattedStartDate = formatDateForQuery(dateRange.start);
         const formattedEndDate = formatDateForQuery(dateRange.end);
@@ -455,7 +520,7 @@ export function PPCManagementView() {
     
     const totalPages = Math.ceil(finalDisplayData.length / ITEMS_PER_PAGE);
 
-    const requestSort = (key: SortableKeys) => {
+    const requestSort = (key: keyof CampaignWithMetrics) => {
         let direction: 'ascending' | 'descending' = 'ascending';
         if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
             direction = 'descending';
@@ -489,36 +554,69 @@ export function PPCManagementView() {
     const bidAdjustmentRules = useMemo(() => profileFilteredRules.filter(r => r.rule_type === 'BID_ADJUSTMENT'), [profileFilteredRules]);
     const searchTermRules = useMemo(() => profileFilteredRules.filter(r => r.rule_type === 'SEARCH_TERM_AUTOMATION'), [profileFilteredRules]);
 
+    const handleEditCampaignRules = (campaignId: number, ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION') => {
+        const campaign = combinedCampaignData.find(c => c.campaignId === campaignId);
+        if (campaign) {
+            setEditingCampaign({ id: campaignId, name: campaign.name, type: ruleType });
+            setIsRuleModalOpen(true);
+        }
+    };
+    
+    const handleSaveIndividualRules = async (campaignId: number, initialRuleIds: Set<number>, newRuleIds: Set<number>) => {
+        setLoading(prev => ({ ...prev, rules: true }));
+        const updates: Promise<any>[] = [];
+        const allRelevantRules = editingCampaign?.type === 'BID_ADJUSTMENT' ? bidAdjustmentRules : searchTermRules;
+
+        for (const rule of allRelevantRules) {
+            const wasSelected = initialRuleIds.has(rule.id);
+            const isSelected = newRuleIds.has(rule.id);
+            if (wasSelected === isSelected) continue;
+
+            const currentCampaignIds = new Set((rule.scope.campaignIds || []).map(id => Number(id)));
+            if (isSelected) {
+                currentCampaignIds.add(campaignId);
+            } else {
+                currentCampaignIds.delete(campaignId);
+            }
+            const updatedScope = { campaignIds: Array.from(currentCampaignIds) };
+            updates.push(fetch(`/api/automation/rules/${rule.id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...rule, scope: updatedScope }),
+            }));
+        }
+
+        try {
+            await Promise.all(updates);
+            await fetchRules();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to update rules.');
+            fetchRules();
+        } finally {
+            setLoading(prev => ({...prev, rules: false}));
+            setIsRuleModalOpen(false);
+            setEditingCampaign(null);
+        }
+    };
+    
     const handleBulkApplyRules = async () => {
-        if (selectedCampaignIds.size === 0) {
-            alert('Please select at least one campaign.');
-            return;
-        }
-        if (selectedBulkBidRule === 'none' && selectedBulkSearchTermRule === 'none') {
-            alert('Please select a bulk action to perform.');
-            return;
-        }
+        if (selectedCampaignIds.size === 0) return alert('Please select at least one campaign.');
+        if (bulkAction === 'none') return alert('Please select a bulk action.');
+        const allSelectedRules = [...bulkSelectedBidRules, ...bulkSelectedSearchTermRules];
+        if (allSelectedRules.length === 0) return alert('Please select at least one rule to apply.');
 
-        setLoading(prev => ({...prev, rules: true}));
-        const campaignsToUpdate = Array.from(selectedCampaignIds);
-        const updates: Promise<Response>[] = [];
+        setLoading(prev => ({ ...prev, rules: true }));
+        const updates: Promise<any>[] = [];
 
-        const processAction = (actionValue: string) => {
-            if (!actionValue || actionValue === 'none') return;
-
-            const [action, ruleIdStr] = actionValue.split('-');
+        for (const ruleIdStr of allSelectedRules) {
             const ruleId = parseInt(ruleIdStr, 10);
-            if (!action || isNaN(ruleId)) return;
-
             const ruleToUpdate = automationRules.find(r => r.id === ruleId);
-            if (!ruleToUpdate) return;
+            if (!ruleToUpdate) continue;
             
             const currentCampaignIds = new Set((ruleToUpdate.scope.campaignIds || []).map(id => Number(id)));
-
-            if (action === 'add') {
-                campaignsToUpdate.forEach(id => currentCampaignIds.add(id));
-            } else if (action === 'remove') {
-                campaignsToUpdate.forEach(id => currentCampaignIds.delete(id));
+            if (bulkAction === 'add') {
+                selectedCampaignIds.forEach(id => currentCampaignIds.add(id));
+            } else if (bulkAction === 'remove') {
+                selectedCampaignIds.forEach(id => currentCampaignIds.delete(id));
             }
 
             const updatedScope = { campaignIds: Array.from(currentCampaignIds) };
@@ -526,153 +624,80 @@ export function PPCManagementView() {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...ruleToUpdate, scope: updatedScope }),
             }));
-        };
-
-        processAction(selectedBulkBidRule);
-        processAction(selectedBulkSearchTermRule);
-
-        if (updates.length === 0) {
-            setLoading(prev => ({...prev, rules: false}));
-            return;
         }
 
         try {
-            const responses = await Promise.all(updates);
-            const failed = responses.find(res => !res.ok);
-            if (failed) {
-                const errorData = await failed.json().catch(() => ({error: 'An unknown error occurred during bulk update.'}));
-                throw new Error(errorData.error);
-            }
-            
+            await Promise.all(updates);
             await fetchRules();
             setSelectedCampaignIds(new Set());
-            setSelectedBulkBidRule('none');
-            setSelectedBulkSearchTermRule('none');
+            setBulkAction('none');
+            setBulkSelectedBidRules([]);
+            setBulkSelectedSearchTermRules([]);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to apply rules in bulk.');
-            fetchRules(); // Re-fetch to revert UI
+            fetchRules();
         } finally {
-            setLoading(prev => ({...prev, rules: false}));
+            setLoading(prev => ({ ...prev, rules: false }));
         }
     };
-
 
     return (
         <div style={styles.container}>
             <header style={styles.header}>
                 <h1 style={styles.title}>PPC Management Dashboard</h1>
             </header>
+            
+            <RuleEditModal isOpen={isRuleModalOpen} onClose={() => setIsRuleModalOpen(false)} campaign={editingCampaign} allRules={profileFilteredRules} onSave={handleSaveIndividualRules} />
 
             {error && <div style={styles.error} role="alert">{error}</div>}
 
             <section style={styles.controlsContainer}>
                  <div style={styles.controlGroup}>
                     <label htmlFor="profile-select" style={{ fontWeight: 500 }}>Profile:</label>
-                    <select
-                        id="profile-select"
-                        style={styles.profileSelector}
-                        value={selectedProfileId || ''}
-                        onChange={(e) => setSelectedProfileId(e.target.value)}
-                        disabled={loading.profiles || profiles.length === 0}
-                    >
-                        {loading.profiles ? (
-                            <option>Loading profiles...</option>
-                        ) : profiles.length > 0 ? (
-                            profiles.map(p => <option key={p.profileId} value={p.profileId}>{p.profileId} ({p.countryCode})</option>)
-                        ) : (
-                            <option>No US profiles found</option>
-                        )}
+                    <select id="profile-select" style={styles.profileSelector} value={selectedProfileId || ''} onChange={(e) => setSelectedProfileId(e.target.value)} disabled={loading.profiles || profiles.length === 0}>
+                        {loading.profiles ? <option>Loading...</option> : profiles.length > 0 ? profiles.map(p => <option key={p.profileId} value={p.profileId}>{p.profileId} ({p.countryCode})</option>) : <option>No US profiles</option>}
                     </select>
                 </div>
                  <div style={styles.controlGroup}>
                     <label htmlFor="status-filter" style={{ fontWeight: 500 }}>Status:</label>
-                    <select
-                        id="status-filter"
-                        style={styles.profileSelector}
-                        value={statusFilter}
-                        onChange={e => {
-                            setStatusFilter(e.target.value as any);
-                            setCurrentPage(1);
-                            setSelectedCampaignIds(new Set());
-                        }}
-                        disabled={loading.data}
-                    >
-                        <option value="enabled">Enabled</option>
-                        <option value="paused">Paused</option>
-                        <option value="archived">Archived</option>
-                        <option value="all">All States</option>
+                    <select id="status-filter" style={styles.profileSelector} value={statusFilter} onChange={e => { setStatusFilter(e.target.value as any); setCurrentPage(1); setSelectedCampaignIds(new Set()); }} disabled={loading.data}>
+                        <option value="enabled">Enabled</option> <option value="paused">Paused</option> <option value="archived">Archived</option> <option value="all">All States</option>
                     </select>
                 </div>
                  <div style={styles.controlGroup}>
-                     <input
-                        type="text"
-                        placeholder="Search by campaign name..."
-                        style={styles.searchInput}
-                        value={searchTerm}
-                        onChange={e => { 
-                            setSearchTerm(e.target.value); 
-                            setCurrentPage(1);
-                            setSelectedCampaignIds(new Set());
-                        }}
-                        disabled={loading.data}
-                    />
+                     <input type="text" placeholder="Search by campaign name..." style={styles.searchInput} value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); setSelectedCampaignIds(new Set()); }} disabled={loading.data} />
                 </div>
                 {selectedCampaignIds.size > 0 && (
                     <div style={styles.bulkActionContainer}>
                         <span style={{fontWeight: 600}}>{selectedCampaignIds.size} selected</span>
-                         <select
-                            value={selectedBulkBidRule}
-                            onChange={e => setSelectedBulkBidRule(e.target.value)}
-                            style={styles.profileSelector}
-                            disabled={loading.rules}
-                        >
-                            <option value="none">-- Bulk Edit Bid Rules --</option>
-                            <optgroup label="ADD Rule to Selected">
-                                {bidAdjustmentRules.map(rule => (
-                                    <option key={`add-${rule.id}`} value={`add-${rule.id}`}>{rule.name}</option>
-                                ))}
-                            </optgroup>
-                            <optgroup label="REMOVE Rule from Selected">
-                                {bidAdjustmentRules.map(rule => (
-                                    <option key={`remove-${rule.id}`} value={`remove-${rule.id}`}>{rule.name}</option>
-                                ))}
-                            </optgroup>
+                        <select style={styles.profileSelector} value={bulkAction} onChange={e => setBulkAction(e.target.value as any)}>
+                            <option value="none">-- Select Action --</option>
+                            <option value="add">ADD rules to campaigns</option>
+                            <option value="remove">REMOVE rules from campaigns</option>
                         </select>
-                         <select
-                            value={selectedBulkSearchTermRule}
-                            onChange={e => setSelectedBulkSearchTermRule(e.target.value)}
-                            style={styles.profileSelector}
-                            disabled={loading.rules}
-                        >
-                            <option value="none">-- Bulk Edit Search Term Rules --</option>
-                            <optgroup label="ADD Rule to Selected">
-                                {searchTermRules.map(rule => (
-                                    <option key={`add-${rule.id}`} value={`add-${rule.id}`}>{rule.name}</option>
-                                ))}
-                            </optgroup>
-                            <optgroup label="REMOVE Rule from Selected">
-                                {searchTermRules.map(rule => (
-                                    <option key={`remove-${rule.id}`} value={`remove-${rule.id}`}>{rule.name}</option>
-                                ))}
-                            </optgroup>
-                        </select>
-                        <button onClick={handleBulkApplyRules} style={styles.bulkActionButton} disabled={loading.rules}>
-                            {loading.rules ? 'Applying...' : 'Apply'}
-                        </button>
+                        {bulkAction !== 'none' && (
+                            <>
+                                <div style={styles.controlGroup}>
+                                    <label style={{fontWeight:500}}>Bid Rules:</label>
+                                    <select multiple value={bulkSelectedBidRules} onChange={e => setBulkSelectedBidRules(Array.from(e.target.selectedOptions, option => option.value))} style={styles.multiSelect} disabled={loading.rules}>
+                                        {bidAdjustmentRules.map(rule => (<option key={rule.id} value={rule.id}>{rule.name}</option>))}
+                                    </select>
+                                </div>
+                                <div style={styles.controlGroup}>
+                                    <label style={{fontWeight:500}}>Search Term Rules:</label>
+                                    <select multiple value={bulkSelectedSearchTermRules} onChange={e => setBulkSelectedSearchTermRules(Array.from(e.target.selectedOptions, option => option.value))} style={styles.multiSelect} disabled={loading.rules}>
+                                        {searchTermRules.map(rule => (<option key={rule.id} value={rule.id}>{rule.name}</option>))}
+                                    </select>
+                                </div>
+                                <button onClick={handleBulkApplyRules} style={styles.bulkActionButton} disabled={loading.rules}>{loading.rules ? 'Applying...' : 'Apply'}</button>
+                            </>
+                        )}
                     </div>
                 )}
                 <div style={{...styles.controlGroup, marginLeft: selectedCampaignIds.size > 0 ? '0' : 'auto'}}>
                      <div style={{ position: 'relative' }}>
-                         <button style={styles.dateButton} onClick={() => setDatePickerOpen(o => !o)}>
-                           {formatDateRangeDisplay(dateRange.start, dateRange.end)}
-                        </button>
-                        {isDatePickerOpen && 
-                            <DateRangePicker 
-                                initialRange={dateRange}
-                                onApply={handleApplyDateRange} 
-                                onClose={() => setDatePickerOpen(false)} 
-                            />
-                        }
+                         <button style={styles.dateButton} onClick={() => setDatePickerOpen(o => !o)}>{formatDateRangeDisplay(dateRange.start, dateRange.end)}</button>
+                        {isDatePickerOpen && <DateRangePicker initialRange={dateRange} onApply={handleApplyDateRange} onClose={() => setDatePickerOpen(false)} />}
                     </div>
                 </div>
             </section>
@@ -686,6 +711,7 @@ export function PPCManagementView() {
                     <CampaignTable 
                         campaigns={paginatedCampaigns} 
                         onUpdateCampaign={handleUpdateCampaign}
+                        onEditRules={handleEditCampaignRules}
                         sortConfig={sortConfig}
                         onRequestSort={requestSort}
                         expandedCampaignId={expandedCampaignId}
