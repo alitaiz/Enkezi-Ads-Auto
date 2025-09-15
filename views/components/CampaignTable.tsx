@@ -366,8 +366,8 @@ export function CampaignTable({
                 </thead>
                 <tbody>
                     {campaigns.map(campaign => {
-                         const currentBidRules = bidAdjustmentRules.filter(r => r.scope.campaignIds?.some(id => Number(id) === campaign.campaignId));
-                        const currentSearchTermRules = searchTermRules.filter(r => r.scope.campaignIds?.some(id => Number(id) === campaign.campaignId));
+                         const currentBidRules = bidAdjustmentRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
+                        const currentSearchTermRules = searchTermRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
 
                         return (
                         <React.Fragment key={campaign.campaignId}>
