@@ -339,7 +339,7 @@ const RuleGuideTab = () => (
         <p style={guideStyles.p}><strong>Target ACoS</strong> must be <strong>lower than</strong> Break-Even ACoS to ensure profitability. For example, for Product B, you might set a Target ACoS of <strong>15-20%</strong>.</p>
         
         <h3 style={guideStyles.h3}>3.2. Part 2: Determine Break-Even Clicks</h3>
-        <p style={guideStyles.p}>When creating negation rules, you often see conditions like <code style={guideStyles.code}>IF clicks > 12 AND orders = 0</code>. But why the number 12? Choosing an arbitrary number can lead you to negate keywords too early (missing opportunities) or too late (wasting money).</p>
+        <p style={guideStyles.p}>When creating negation rules, you often see conditions like <code style={guideStyles.code}>IF clicks &gt; 12 AND orders = 0</code>. But why the number 12? Choosing an arbitrary number can lead you to negate keywords too early (missing opportunities) or too late (wasting money).</p>
         <p style={guideStyles.p}>The expert approach is to use your <strong>Conversion Rate (CVR)</strong> to determine a statistically sound click threshold.</p>
         <p style={guideStyles.p}><strong>Formula:</strong> <code style={guideStyles.code}>Click Threshold = 1 / Target Conversion Rate</code></p>
         <p style={guideStyles.p}><strong>Explanation:</strong></p>
@@ -364,7 +364,7 @@ const RuleGuideTab = () => (
             <li style={guideStyles.li}><strong>Cooldown:</strong> 7 days.</li>
             <li style={guideStyles.li}><strong>Logic:</strong></li>
             <ul style={{paddingLeft: '20px'}}>
-                <li><strong>IF</strong> (spend in last 30 days > $4.00 <strong>AND</strong> orders = 0) <strong>THEN</strong> decrease bid by 50% (but not lower than $0.15).</li>
+                <li><strong>IF</strong> (spend in last 30 days &gt; $4.00 <strong>AND</strong> orders = 0) <strong>THEN</strong> decrease bid by 50% (but not lower than $0.15).</li>
             </ul>
         </ul>
 
@@ -378,9 +378,9 @@ const RuleGuideTab = () => (
             <li style={guideStyles.li}><strong>Cooldown:</strong> 48 hours.</li>
             <li style={guideStyles.li}><strong>Condition Groups (evaluated top to bottom):</strong></li>
             <ol style={{paddingLeft: '20px'}}>
-                <li style={guideStyles.li}><strong>IF</strong> (ACOS in last 30 days > 40% <strong>AND</strong> spend > $16) <strong>THEN</strong> decrease bid by 20%.</li>
-                <li style={guideStyles.li}><strong>OR IF</strong> (ACOS in last 14 days > 25%) <strong>THEN</strong> decrease bid by 10%.</li>
-                <li style={guideStyles.li}><strong>OR IF</strong> (ACOS in last 14 days &lt; 15% <strong>AND</strong> orders > 1) <strong>THEN</strong> increase bid by 8%.</li>
+                <li style={guideStyles.li}><strong>IF</strong> (ACOS in last 30 days &gt; 40% <strong>AND</strong> spend &gt; $16) <strong>THEN</strong> decrease bid by 20%.</li>
+                <li style={guideStyles.li}><strong>OR IF</strong> (ACOS in last 14 days &gt; 25%) <strong>THEN</strong> decrease bid by 10%.</li>
+                <li style={guideStyles.li}><strong>OR IF</strong> (ACOS in last 14 days &lt; 15% <strong>AND</strong> orders &gt; 1) <strong>THEN</strong> increase bid by 8%.</li>
             </ol>
         </ul>
 
@@ -397,7 +397,7 @@ const RuleGuideTab = () => (
             <li style={guideStyles.li}><strong>Cooldown:</strong> 90 days.</li>
             <li style={guideStyles.li}><strong>Logic:</strong></li>
             <ul style={{paddingLeft: '20px'}}>
-                <li><strong>IF</strong> (spend in last 60 days > $6.00 <strong>AND</strong> sales = 0) <strong>THEN</strong> create a Negative Exact keyword.</li>
+                <li><strong>IF</strong> (spend in last 60 days &gt; $6.00 <strong>AND</strong> sales = 0) <strong>THEN</strong> create a Negative Exact keyword.</li>
             </ul>
         </ul>
         
@@ -410,7 +410,7 @@ const RuleGuideTab = () => (
             <li style={guideStyles.li}><strong>Cooldown:</strong> 90 days.</li>
             <li style={guideStyles.li}><strong>Logic:</strong></li>
             <ul style={{paddingLeft: '20px'}}>
-                <li><strong>IF</strong> (clicks in last 30 days > 14 <strong>AND</strong> orders = 0) <strong>THEN</strong> create a Negative Phrase keyword.</li>
+                <li><strong>IF</strong> (clicks in last 30 days &gt; 14 <strong>AND</strong> orders = 0) <strong>THEN</strong> create a Negative Phrase keyword.</li>
             </ul>
         </ul>
 
