@@ -131,7 +131,7 @@ const getDefaultBudgetAccelerationRule = (): Partial<AutomationRule> => ({
 
 
 export function AutomationView() {
-  const [activeTab, setActiveTab] = useState('bidAdjustment');
+  const [activeTab, setActiveTab] = useState('bidadjustment');
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState({ rules: true, logs: true });
@@ -215,15 +215,15 @@ export function AutomationView() {
   };
 
   const filteredRules = rules.filter(r => 
-      (activeTab === 'bidAdjustment' && r.rule_type === 'BID_ADJUSTMENT') ||
-      (activeTab === 'searchTerm' && r.rule_type === 'SEARCH_TERM_AUTOMATION') ||
-      (activeTab === 'budgetAcceleration' && r.rule_type === 'BUDGET_ACCELERATION')
+      (activeTab === 'bidadjustment' && r.rule_type === 'BID_ADJUSTMENT') ||
+      (activeTab === 'searchterm' && r.rule_type === 'SEARCH_TERM_AUTOMATION') ||
+      (activeTab === 'budgetacceleration' && r.rule_type === 'BUDGET_ACCELERATION')
   );
 
   const ruleTypeTitles: { [key: string]: string } = {
-      bidAdjustment: 'Bid Adjustment Rules',
-      searchTerm: 'Search Term Automation Rules',
-      budgetAcceleration: 'Budget Acceleration Rules'
+      bidadjustment: 'Bid Adjustment Rules',
+      searchterm: 'Search Term Automation Rules',
+      budgetacceleration: 'Budget Acceleration Rules'
   };
 
   return (
@@ -233,23 +233,23 @@ export function AutomationView() {
       </header>
 
       <div style={styles.tabs}>
-        <button style={activeTab === 'bidAdjustment' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('bidAdjustment')}>Bid Adjustment</button>
-        <button style={activeTab === 'searchTerm' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('searchTerm')}>Search Term</button>
-        <button style={activeTab === 'budgetAcceleration' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('budgetAcceleration')}>Budget Acceleration</button>
+        <button style={activeTab === 'bidadjustment' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('bidadjustment')}>Bid Adjustment</button>
+        <button style={activeTab === 'searchterm' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('searchterm')}>Search Term</button>
+        <button style={activeTab === 'budgetacceleration' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('budgetacceleration')}>Budget Acceleration</button>
         <button style={activeTab === 'history' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('history')}>History</button>
-        <button style={activeTab === 'ruleGuide' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('ruleGuide')}>Guide</button>
+        <button style={activeTab === 'ruleguide' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('ruleguide')}>Guide</button>
       </div>
       
-      {['bidAdjustment', 'searchTerm', 'budgetAcceleration'].includes(activeTab) && (
+      {['bidadjustment', 'searchterm', 'budgetacceleration'].includes(activeTab) && (
           <div style={styles.contentHeader}>
               <h2 style={styles.contentTitle}>{ruleTypeTitles[activeTab]}</h2>
               <button style={styles.primaryButton} onClick={() => handleOpenModal()}>+ Create New Rule</button>
           </div>
       )}
 
-      {activeTab !== 'history' && activeTab !== 'ruleGuide' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
+      {activeTab !== 'history' && activeTab !== 'ruleguide' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
       {activeTab === 'history' && <LogsTab logs={logs} loading={loading.logs} />}
-      {activeTab === 'ruleGuide' && <RuleGuideContent />}
+      {activeTab === 'ruleguide' && <RuleGuideContent />}
       
       {isModalOpen && (
           <RuleBuilderModal 
@@ -319,7 +319,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
     const [formData, setFormData] = useState<Partial<AutomationRule>>(() => {
         if (rule) return JSON.parse(JSON.stringify(rule));
         if (ruleType === 'bidadjustment') return getDefaultBidAdjustmentRule();
-        if (ruleType === 'searchTerm') return getDefaultSearchTermRule();
+        if (ruleType === 'searchterm') return getDefaultSearchTermRule();
         if (ruleType === 'budgetacceleration') return getDefaultBudgetAccelerationRule();
         return getDefaultBidAdjustmentRule();
     });
@@ -365,7 +365,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
         setFormData(prev => {
             let newGroup;
             if (ruleType === 'bidadjustment') newGroup = getDefaultBidAdjustmentGroup();
-            else if (ruleType === 'searchTerm') newGroup = getDefaultSearchTermGroup();
+            else if (ruleType === 'searchterm') newGroup = getDefaultSearchTermGroup();
             else if (ruleType === 'budgetacceleration') newGroup = getDefaultBudgetAccelerationGroup();
             else newGroup = getDefaultBidAdjustmentGroup();
             
@@ -384,7 +384,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
 
     const modalTitle: { [key: string]: string } = {
         'bidadjustment': 'Edit Bid Adjustment Rule',
-        'searchTerm': 'Edit Search Term Rule',
+        'searchterm': 'Edit Search Term Rule',
         'budgetacceleration': 'Edit Budget Acceleration Rule'
     };
 
@@ -568,7 +568,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                                 </div>
                                             </div>
                                         )}
-                                         {ruleType === 'searchTerm' && (
+                                         {ruleType === 'searchterm' && (
                                             <div style={styles.thenGrid}>
                                                  <div style={styles.formGroup}>
                                                     <label style={styles.label}>Action</label>
