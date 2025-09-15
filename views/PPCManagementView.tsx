@@ -530,7 +530,7 @@ export function PPCManagementView() {
     const handleBulkApplyRules = async () => {
         if (selectedCampaignIds.size === 0) return;
         if (selectedBulkBidRule === 'none' && selectedBulkSearchTermRule === 'none') {
-            alert('Please select a rule to apply.');
+            alert('Please select a rule to apply or remove.');
             return;
         }
 
@@ -539,9 +539,11 @@ export function PPCManagementView() {
         const updates: Promise<Response>[] = [];
 
         const applyRule = (ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION', newRuleIdStr: string) => {
-            const newRuleId = newRuleIdStr === 'none' ? null : parseInt(newRuleIdStr, 10);
-            if (newRuleId === null) return;
+            const isRemoveAction = newRuleIdStr === 'remove';
+            const newRuleId = newRuleIdStr === 'none' || isRemoveAction ? null : parseInt(newRuleIdStr, 10);
             
+            if (newRuleIdStr === 'none') return; // 'none' is the placeholder, so it does nothing.
+
             const rulesOfType = ruleType === 'BID_ADJUSTMENT' ? bidAdjustmentRules : searchTermRules;
             
             const oldRules = rulesOfType.filter(r => 
@@ -558,15 +560,17 @@ export function PPCManagementView() {
                 }));
             }
 
-            const newRule = rulesOfType.find(r => r.id === newRuleId);
-            if (newRule) {
-                 const updatedScope = { 
-                    campaignIds: [...new Set([...(newRule.scope.campaignIds || []).map(Number), ...campaignsToUpdate])] 
-                };
-                 updates.push(fetch(`/api/automation/rules/${newRule.id}`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...newRule, scope: updatedScope }),
-                }));
+            if (!isRemoveAction && newRuleId !== null) {
+                const newRule = rulesOfType.find(r => r.id === newRuleId);
+                if (newRule) {
+                     const updatedScope = { 
+                        campaignIds: [...new Set([...(newRule.scope.campaignIds || []).map(Number), ...campaignsToUpdate])] 
+                    };
+                     updates.push(fetch(`/api/automation/rules/${newRule.id}`, {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...newRule, scope: updatedScope }),
+                    }));
+                }
             }
         };
 
@@ -661,6 +665,7 @@ export function PPCManagementView() {
                             disabled={loading.rules}
                         >
                             <option value="none">-- Assign Bid Rule --</option>
+                            <option value="remove" style={{ color: 'var(--danger-color)', fontWeight: 'bold' }}>-- Remove Rule --</option>
                             {bidAdjustmentRules.map(rule => (
                                 <option key={rule.id} value={rule.id}>{rule.name}</option>
                             ))}
@@ -672,6 +677,7 @@ export function PPCManagementView() {
                             disabled={loading.rules}
                         >
                             <option value="none">-- Assign Search Term Rule --</option>
+                             <option value="remove" style={{ color: 'var(--danger-color)', fontWeight: 'bold' }}>-- Remove Rule --</option>
                             {searchTermRules.map(rule => (
                                 <option key={rule.id} value={rule.id}>{rule.name}</option>
                             ))}
