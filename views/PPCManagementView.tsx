@@ -181,7 +181,6 @@ const RuleEditModal = ({ isOpen, onClose, campaign, allRules, onSave }: { isOpen
     );
 };
 
-// FIX: Define a constant for the number of items to display per page for pagination.
 const ITEMS_PER_PAGE = 50;
 
 export function PPCManagementView() {
@@ -214,7 +213,6 @@ export function PPCManagementView() {
     const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
     const [editingCampaign, setEditingCampaign] = useState<{id: number; name: string; type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION'} | null>(null);
 
-    // New state for redesigned bulk actions
     const [bulkAction, setBulkAction] = useState<'none' | 'add' | 'remove'>('none');
     const [bulkSelectedBidRules, setBulkSelectedBidRules] = useState<string[]>([]);
     const [bulkSelectedSearchTermRules, setBulkSelectedSearchTermRules] = useState<string[]>([]);
@@ -264,99 +262,11 @@ export function PPCManagementView() {
     useEffect(() => {
         fetchRules();
     }, [fetchRules]);
-
-    const fetchData = useCallback(async () => {
-        if (!selectedProfileId) return;
-
-        setLoading(prev => ({ ...prev, data: true }));
-        setError(null);
-        setCurrentPage(1);
-        setSelectedCampaignIds(new Set());
-
-        const formattedStartDate = formatDateForQuery(dateRange.start);
-        const formattedEndDate = formatDateForQuery(dateRange.end);
-
-        try {
-            const metricsPromise = fetch(`/api/stream/campaign-metrics?startDate=${formattedStartDate}&endDate=${formattedEndDate}`);
-            const initialCampaignsPromise = fetch('/api/amazon/campaigns/list', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    profileId: selectedProfileId,
-                    stateFilter: ["ENABLED", "PAUSED", "ARCHIVED"],
-                }),
-            });
-            
-            const [metricsResponse, initialCampaignsResponse] = await Promise.all([metricsPromise, initialCampaignsPromise]);
-
-            if (!metricsResponse.ok) throw new Error((await metricsResponse.json()).error || 'Failed to fetch performance metrics.');
-            if (!initialCampaignsResponse.ok) throw new Error((await initialCampaignsResponse.json()).message || 'Failed to fetch initial campaigns.');
-
-            const metricsData: CampaignStreamMetrics[] = await metricsResponse.json() || [];
-            const initialCampaignsResult = await initialCampaignsResponse.json();
-            let allCampaigns: Campaign[] = initialCampaignsResult.campaigns || [];
-            
-            const existingCampaignIds = new Set(allCampaigns.map(c => c.campaignId));
-            const missingCampaignIds = metricsData
-                .map(m => m.campaignId)
-                .filter(id => !existingCampaignIds.has(id));
-
-            if (missingCampaignIds.length > 0) {
-                const missingCampaignsResponse = await fetch('/api/amazon/campaigns/list', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        profileId: selectedProfileId,
-                        stateFilter: ["ENABLED", "PAUSED", "ARCHIVED"], 
-                        campaignIdFilter: missingCampaignIds,
-                    }),
-                });
-
-                if (missingCampaignsResponse.ok) {
-                    const missingCampaignsData = await missingCampaignsResponse.json();
-                    allCampaigns = [...allCampaigns, ...(missingCampaignsData.campaigns || [])];
-                }
-            }
-            
-            const uniqueCampaignsMap = new Map<number, Campaign>();
-            for (const campaign of allCampaigns) {
-                if (campaign?.campaignId) {
-                    uniqueCampaignsMap.set(campaign.campaignId, campaign);
-                }
-            }
-            const uniqueCampaigns = Array.from(uniqueCampaignsMap.values());
-
-            const metricsMap = metricsData.reduce((acc, metric) => {
-                acc[metric.campaignId] = metric;
-                return acc;
-            }, {} as Record<number, CampaignStreamMetrics>);
-
-            setCampaigns(uniqueCampaigns);
-            setPerformanceMetrics(metricsMap);
-            setCache(prev => ({
-                ...prev,
-                ppcManagement: {
-                    campaigns: uniqueCampaigns,
-                    performanceMetrics: metricsMap,
-                    profileId: selectedProfileId,
-                    dateRange: dateRange,
-                }
-            }));
-
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to fetch data.');
-            setCampaigns([]);
-            setPerformanceMetrics({});
-        } finally {
-            setLoading(prev => ({ ...prev, data: false }));
-        }
-    }, [selectedProfileId, dateRange, setCache]);
-
-
+    
     useEffect(() => {
         if (!selectedProfileId) {
-             setLoading(prev => ({ ...prev, data: false }));
-             return;
+            setLoading(prev => ({ ...prev, data: false }));
+            return;
         }
 
         if (
@@ -370,8 +280,94 @@ export function PPCManagementView() {
             return;
         }
 
-        fetchData();
-    }, [selectedProfileId, dateRange, fetchData, cache]);
+        const doFetchData = async () => {
+            setLoading(prev => ({ ...prev, data: true }));
+            setError(null);
+            setCurrentPage(1);
+            setSelectedCampaignIds(new Set());
+
+            const formattedStartDate = formatDateForQuery(dateRange.start);
+            const formattedEndDate = formatDateForQuery(dateRange.end);
+
+            try {
+                const metricsPromise = fetch(`/api/stream/campaign-metrics?startDate=${formattedStartDate}&endDate=${formattedEndDate}`);
+                const initialCampaignsPromise = fetch('/api/amazon/campaigns/list', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        profileId: selectedProfileId,
+                        stateFilter: ["ENABLED", "PAUSED", "ARCHIVED"],
+                    }),
+                });
+                
+                const [metricsResponse, initialCampaignsResponse] = await Promise.all([metricsPromise, initialCampaignsPromise]);
+
+                if (!metricsResponse.ok) throw new Error((await metricsResponse.json()).error || 'Failed to fetch performance metrics.');
+                if (!initialCampaignsResponse.ok) throw new Error((await initialCampaignsResponse.json()).message || 'Failed to fetch initial campaigns.');
+
+                const metricsData: CampaignStreamMetrics[] = await metricsResponse.json() || [];
+                const initialCampaignsResult = await initialCampaignsResponse.json();
+                let allCampaigns: Campaign[] = initialCampaignsResult.campaigns || [];
+                
+                const existingCampaignIds = new Set(allCampaigns.map(c => c.campaignId));
+                const missingCampaignIds = metricsData
+                    .map(m => m.campaignId)
+                    .filter(id => !existingCampaignIds.has(id));
+
+                if (missingCampaignIds.length > 0) {
+                    const missingCampaignsResponse = await fetch('/api/amazon/campaigns/list', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            profileId: selectedProfileId,
+                            stateFilter: ["ENABLED", "PAUSED", "ARCHIVED"], 
+                            campaignIdFilter: missingCampaignIds,
+                        }),
+                    });
+
+                    if (missingCampaignsResponse.ok) {
+                        const missingCampaignsData = await missingCampaignsResponse.json();
+                        allCampaigns = [...allCampaigns, ...(missingCampaignsData.campaigns || [])];
+                    }
+                }
+                
+                const uniqueCampaignsMap = new Map<number, Campaign>();
+                for (const campaign of allCampaigns) {
+                    if (campaign?.campaignId) {
+                        uniqueCampaignsMap.set(campaign.campaignId, campaign);
+                    }
+                }
+                const uniqueCampaigns = Array.from(uniqueCampaignsMap.values());
+
+                const metricsMap = metricsData.reduce((acc, metric) => {
+                    acc[metric.campaignId] = metric;
+                    return acc;
+                }, {} as Record<number, CampaignStreamMetrics>);
+
+                setCampaigns(uniqueCampaigns);
+                setPerformanceMetrics(metricsMap);
+                setCache(prev => ({
+                    ...prev,
+                    ppcManagement: {
+                        campaigns: uniqueCampaigns,
+                        performanceMetrics: metricsMap,
+                        profileId: selectedProfileId,
+                        dateRange: dateRange,
+                    }
+                }));
+
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to fetch data.');
+                setCampaigns([]);
+                setPerformanceMetrics({});
+            } finally {
+                setLoading(prev => ({ ...prev, data: false }));
+            }
+        };
+        
+        doFetchData();
+    }, [selectedProfileId, dateRange, cache.ppcManagement, setCache]);
+
 
     useEffect(() => {
         if (selectedProfileId) {
