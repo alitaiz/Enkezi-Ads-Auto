@@ -1,5 +1,7 @@
+// views/AutomationView.tsx
 import React, { useEffect, useState, useCallback } from 'react';
 import { AutomationRule, AutomationRuleCondition, AutomationConditionGroup, AutomationRuleAction } from '../types';
+import { RuleGuideContent } from './components/RuleGuideContent';
 
 const styles: { [key: string]: React.CSSProperties } = {
   container: { maxWidth: '1200px', margin: '0 auto', padding: '20px' },
@@ -45,21 +47,6 @@ const styles: { [key: string]: React.CSSProperties } = {
   thenHeader: { fontWeight: 'bold', fontSize: '1rem', marginBottom: '15px', color: '#333' },
   thenGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '15px' },
 };
-
-const guideStyles: { [key: string]: React.CSSProperties } = {
-    container: { lineHeight: 1.6, color: '#333', backgroundColor: 'var(--card-background-color)', padding: '20px 40px', borderRadius: 'var(--border-radius)', boxShadow: 'var(--box-shadow)' },
-    h1: { fontSize: '2em', borderBottom: '2px solid var(--border-color)', paddingBottom: '10px', marginBottom: '20px' },
-    h2: { fontSize: '1.75em', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', marginTop: '40px', marginBottom: '20px' },
-    h3: { fontSize: '1.5em', marginTop: '30px', marginBottom: '15px' },
-    h4: { fontSize: '1.2em', marginTop: '25px', marginBottom: '10px', color: '#111' },
-    p: { marginBottom: '15px' },
-    ul: { paddingLeft: '20px', marginBottom: '15px' },
-    ol: { paddingLeft: '20px', marginBottom: '15px' },
-    li: { marginBottom: '8px' },
-    code: { backgroundColor: '#eef', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace', color: '#d63384' },
-    blockquote: { borderLeft: '4px solid var(--primary-color)', paddingLeft: '15px', margin: '20px 0', fontStyle: 'italic', color: '#555', backgroundColor: '#f8f9fa' },
-};
-
 
 const getDefaultCondition = (): AutomationRuleCondition => ({
     metric: 'spend',
@@ -212,7 +199,7 @@ export function AutomationView() {
       {activeTab === 'bidAdjustment' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} />}
       {activeTab === 'searchTerm' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} />}
       {activeTab === 'history' && <LogsTab logs={logs} loading={loading.logs} />}
-      {activeTab === 'ruleGuide' && <RuleGuideTab />}
+      {activeTab === 'ruleGuide' && <RuleGuideContent />}
       
       {isModalOpen && (
           <RuleBuilderModal 
@@ -276,180 +263,6 @@ const LogsTab = ({ logs, loading }: { logs: any[], loading: boolean}) => (
         )}
     </div>
 );
-
-const RuleGuideTab = () => (
-    <div style={guideStyles.container}>
-        <h1 style={guideStyles.h1}>PPC Automation Guide</h1>
-
-        <h2 style={guideStyles.h2}>1. Introduction - The Power of Automation</h2>
-        <p style={guideStyles.p}>
-            Welcome to the <strong>Automation Center</strong>, a powerful control center designed to save you time, reduce wasted spend, and optimize ad performance 24/7. Instead of manual daily checks and adjustments, you can set up smart "rules" to let the system work for you, based on your actual business goals.
-        </p>
-        <p style={guideStyles.p}>
-            This tool allows you to perform two main types of automation:
-        </p>
-        <ol style={guideStyles.ol}>
-            <li style={guideStyles.li}><strong>Bid Adjustment:</strong> Automatically increase or decrease keyword/target bids based on performance metrics like ACOS, ROAS, Profit, Conversion Rate, etc.</li>
-            <li style={guideStyles.li}><strong>Search Term Management:</strong> Automatically analyze customer search terms to <strong>negate</strong> inefficient ones or <strong>"harvest"</strong> golden terms to scale.</li>
-        </ol>
-        <p style={guideStyles.p}>
-            This document will explain the core concepts, guide you in identifying key business metrics, and provide real-world examples to get you started immediately.
-        </p>
-
-        <h2 style={guideStyles.h2}>2. Core Concepts</h2>
-        <p style={guideStyles.p}>To use the tool effectively, you need to master the following concepts:</p>
-
-        <h3 style={guideStyles.h3}>2.1. Rule</h3>
-        <p style={guideStyles.p}>A <strong>Rule</strong> is a container that holds a complete automation strategy. Each rule has:</p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}>A name (e.g., "Optimize Bid by Profit").</li>
-            <li style={guideStyles.li}>A type (Bid Adjustment or Search Term Automation).</li>
-            <li style={guideStyles.li}>One or more logical condition groups.</li>
-            <li style={guideStyles.li}>Settings for frequency and scope of application.</li>
-        </ul>
-
-        <h3 style={guideStyles.h3}>2.2. Condition Group (IF/THEN Logic)</h3>
-        <p style={guideStyles.p}>This is the heart of each rule, acting like an <code style={guideStyles.code}>IF ... THEN ...</code> block:</p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}><strong>IF:</strong> Includes one or more conditions connected by <strong>AND</strong> logic. All conditions in this group must be met.</li>
-            <li style={guideStyles.li}><strong>THEN:</strong> Includes a specific action to be executed when the <code style={guideStyles.code}>IF</code> block is true.</li>
-        </ul>
-        
-        <h3 style={guideStyles.h3}>2.3. "First Match Wins" Principle</h3>
-        <p style={guideStyles.p}>This is the <strong>most important principle</strong> to remember when a Rule has multiple Condition Groups (the <code style={guideStyles.code}>OR IF</code> blocks).</p>
-        <ol style={guideStyles.ol}>
-            <li style={guideStyles.li}><strong>Order is everything:</strong> The system will always evaluate condition groups in the order you arrange them, <strong>from top to bottom</strong>.</li>
-            <li style={guideStyles.li}><strong>Stops when found:</strong> As soon as a keyword/target satisfies all conditions in a group, the system will execute that group's action and <strong>stop processing</strong> that entity. It will not consider the groups below it.</li>
-        </ol>
-        <blockquote style={guideStyles.blockquote}>
-            <p style={guideStyles.p}><strong>Golden Rule:</strong> Place the <strong>most specific</strong> and highest priority rules (e.g., the strongest bid reductions) at the top. More general rules should be placed below.</p>
-        </blockquote>
-
-        <h2 style={guideStyles.h2}>3. Strategy Foundation</h2>
-        
-        <h3 style={guideStyles.h3}>3.1. Part 1: Calculate Break-Even ACoS & Target ACoS</h3>
-        <p style={guideStyles.p}>Before creating any rules, you must answer the most important question: "For each product, how much can I spend on advertising and still be profitable?" The answer is the <strong>Break-Even ACoS</strong>.</p>
-        <p style={guideStyles.p}><strong>Formula:</strong> <code style={guideStyles.code}>Break-Even ACoS = Profit before Ad Spend / Product Selling Price</code></p>
-        <p style={guideStyles.p}>Let's calculate for your example products:</p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}><strong>Product A ($9.99, Profit $4.00):</strong> Break-Even ACoS = $4.00 / $9.99 ≈ <strong>40%</strong></li>
-            <li style={guideStyles.li}><strong>Product B ($19.99, Profit $5.00):</strong> Break-Even ACoS = $5.00 / $19.99 ≈ <strong>25%</strong></li>
-            <li style={guideStyles.li}><strong>Product C ($29.99, Profit $8.00):</strong> Break-Even ACoS = $8.00 / $29.99 ≈ <strong>27%</strong></li>
-        </ul>
-        <p style={guideStyles.p}><strong>Target ACoS</strong> must be <strong>lower than</strong> Break-Even ACoS to ensure profitability. For example, for Product B, you might set a Target ACoS of <strong>15-20%</strong>.</p>
-        
-        <h3 style={guideStyles.h3}>3.2. Part 2: Determine Break-Even Clicks</h3>
-        <p style={guideStyles.p}>When creating negation rules, you often see conditions like <code style={guideStyles.code}>IF clicks &gt; 12 AND orders = 0</code>. But why the number 12? Choosing an arbitrary number can lead you to negate keywords too early (missing opportunities) or too late (wasting money).</p>
-        <p style={guideStyles.p}>The expert approach is to use your <strong>Conversion Rate (CVR)</strong> to determine a statistically sound click threshold.</p>
-        <p style={guideStyles.p}><strong>Formula:</strong> <code style={guideStyles.code}>Click Threshold = 1 / Target Conversion Rate</code></p>
-        <p style={guideStyles.p}><strong>Explanation:</strong></p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}>If your product's average CVR is <strong>8%</strong> (i.e., 8 orders per 100 clicks), then you theoretically need <code style={guideStyles.code}>1 / 0.08 = 12.5</code> clicks to get one order.</li>
-            <li style={guideStyles.li}>This means that if a keyword gets <strong>13-15 clicks</strong> with zero orders, it's performing below average, and that's a strong signal to consider action (reducing bid or negating).</li>
-        </ul>
-        <blockquote style={guideStyles.blockquote}>
-            <p style={guideStyles.p}><strong>Pro Tip:</strong> Check your average CVR in the "Business Reports" section of Seller Central to get a good starting number for your target CVR.</p>
-        </blockquote>
-
-        <h2 style={guideStyles.h2}>4. Bid Adjustment Automation: Strategies & Examples</h2>
-        
-        <h3 style={guideStyles.h3}>Strategy 1: Foundation - Cut Waste & Protect Profit</h3>
-        <p style={guideStyles.p}><strong>Goal:</strong> Quickly identify and reduce spend on keywords/targets that are not generating any revenue.</p>
-        <h4 style={guideStyles.h4}>Example: "Quick Loss-Cutting" Rule for Product A ($9.99, Profit $4.00)</h4>
-        <p style={guideStyles.p}><strong>Rule Name:</strong> <code style={guideStyles.code}>[SP-A] Quick Loss-Cutting</code></p>
-        <p style={guideStyles.p}><strong>Strategy:</strong> If a keyword has spent the entire potential profit ($4.00) without generating an order, drastically reduce its bid.</p>
-        <p style={guideStyles.p}><strong>Configuration (<code style={guideStyles.code}>config</code>):</strong></p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}><strong>Frequency:</strong> Every 24 hours.</li>
-            <li style={guideStyles.li}><strong>Cooldown:</strong> 7 days.</li>
-            <li style={guideStyles.li}><strong>Logic:</strong></li>
-            <ul style={{paddingLeft: '20px'}}>
-                <li><strong>IF</strong> (spend in last 30 days &gt; $4.00 <strong>AND</strong> orders = 0) <strong>THEN</strong> decrease bid by 50% (but not lower than $0.15).</li>
-            </ul>
-        </ul>
-
-        <h3 style={guideStyles.h3}>Strategy 2: Profitability Optimization</h3>
-        <p style={guideStyles.p}><strong>Goal:</strong> Automatically adjust active keywords to bring their ACoS closer to the Target ACoS.</p>
-        <h4 style={guideStyles.h4}>Example: "Tiered ACoS Optimization" Rule for Product C ($29.99, Target ACoS ~20%)</h4>
-        <p style={guideStyles.p}><strong>Rule Name:</strong> <code style={guideStyles.code}>[SP-C] Tiered ACoS Optimization</code></p>
-        <p style={guideStyles.p}><strong>Configuration (<code style={guideStyles.code}>config</code>):</strong></p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}><strong>Frequency:</strong> Every 4 hours.</li>
-            <li style={guideStyles.li}><strong>Cooldown:</strong> 48 hours.</li>
-            <li style={guideStyles.li}><strong>Condition Groups (evaluated top to bottom):</strong></li>
-            <ol style={{paddingLeft: '20px'}}>
-                <li style={guideStyles.li}><strong>IF</strong> (ACOS in last 30 days &gt; 40% <strong>AND</strong> spend &gt; $16) <strong>THEN</strong> decrease bid by 20%.</li>
-                <li style={guideStyles.li}><strong>OR IF</strong> (ACOS in last 14 days &gt; 25%) <strong>THEN</strong> decrease bid by 10%.</li>
-                <li style={guideStyles.li}><strong>OR IF</strong> (ACOS in last 14 days &lt; 15% <strong>AND</strong> orders &gt; 1) <strong>THEN</strong> increase bid by 8%.</li>
-            </ol>
-        </ul>
-
-        <h2 style={guideStyles.h2}>5. Search Term Automation: From Defense to Offense</h2>
-        <p style={guideStyles.p}>Search term automation is not just about "defense" (negating bad keywords) but also about "offense" (finding and scaling new opportunities).</p>
-        
-        <h3 style={guideStyles.h3}>5.1. Negate Wasted Spend Search Terms (Defense)</h3>
-        <p style={guideStyles.p}><strong>Goal:</strong> Keep your campaigns "clean" by automatically removing irrelevant or inefficient search terms.</p>
-        <h4 style={guideStyles.h4}>Example 1: Negate based on Wasted Spend</h4>
-        <p style={guideStyles.p}><strong>Rule Name:</strong> <code style={guideStyles.code}>Negate by Profit</code></p>
-        <p style={guideStyles.p}><strong>Configuration (<code style={guideStyles.code}>config</code>):</strong></p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}><strong>Frequency:</strong> Every 48 hours.</li>
-            <li style={guideStyles.li}><strong>Cooldown:</strong> 90 days.</li>
-            <li style={guideStyles.li}><strong>Logic:</strong></li>
-            <ul style={{paddingLeft: '20px'}}>
-                <li><strong>IF</strong> (spend in last 60 days &gt; $6.00 <strong>AND</strong> sales = 0) <strong>THEN</strong> create a Negative Exact keyword.</li>
-            </ul>
-        </ul>
-        
-        <h4 style={guideStyles.h4}>Example 2: Negate based on Non-Converting Clicks</h4>
-        <p style={guideStyles.p}><strong>Rule Name:</strong> <code style={guideStyles.code}>Negate Non-Converting</code></p>
-        <p style={guideStyles.p}><strong>Strategy:</strong> Use the Click Threshold formula. Assuming our target CVR is 7%, the click threshold is <code style={guideStyles.code}>1 / 0.07 ≈ 14</code>.</p>
-        <p style={guideStyles.p}><strong>Configuration (<code style={guideStyles.code}>config</code>):</strong></p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}><strong>Frequency:</strong> Every 48 hours.</li>
-            <li style={guideStyles.li}><strong>Cooldown:</strong> 90 days.</li>
-            <li style={guideStyles.li}><strong>Logic:</strong></li>
-            <ul style={{paddingLeft: '20px'}}>
-                <li><strong>IF</strong> (clicks in last 30 days &gt; 14 <strong>AND</strong> orders = 0) <strong>THEN</strong> create a Negative Phrase keyword.</li>
-            </ul>
-        </ul>
-
-        <h2 style={guideStyles.h2}>6. Advanced Strategic Thinking - When ACoS Isn't Everything</h2>
-        <p style={guideStyles.p}>ACoS-based rules are incredibly powerful for optimizing profitability. However, focusing solely on ACoS can be a trap. A professional advertiser always looks at the bigger picture.</p>
-        
-        <h3 style={guideStyles.h3}>6.1. TACOS (Total ACoS) - The True Health Metric</h3>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}><strong>ACoS (Advertising Cost of Sales):</strong> <code style={guideStyles.code}>Ad Spend / Ad Sales</code>. This measures the efficiency of <strong>advertising alone</strong>.</li>
-            <li style={guideStyles.li}><strong>TACOS (Total Advertising Cost of Sales):</strong> <code style={guideStyles.code}>Ad Spend / TOTAL Sales (Ad + Organic)</code>. This measures the <strong>overall impact</strong> of your advertising on your entire business.</li>
-        </ul>
-        <p style={guideStyles.p}><strong>Why is TACOS important?</strong></p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}>The ultimate goal of advertising is to create a "flywheel effect": ads drive sales, which boosts organic rank, leading to more organic sales.</li>
-            <li style={guideStyles.li}>A good campaign might have a slightly increasing ACoS but cause a strong increase in organic sales, leading to a <strong>decreasing TACOS</strong>. This is an excellent sign.</li>
-            <li style={guideStyles.li}>Conversely, if you "squeeze" ACoS too tightly, you might lose impressions, reduce ad sales, and harm your organic rank, leading to an <strong>increasing TACOS</strong>.</li>
-        </ul>
-        <blockquote style={guideStyles.blockquote}>
-            <p style={guideStyles.p}><strong>Expert Advice:</strong> Keep a close eye on your TACOS. Your automation rules should aim to keep TACOS stable or trending down over time.</p>
-        </blockquote>
-
-        <h3 style={guideStyles.h3}>6.2. Protecting Strategic Keywords & Impression Share</h3>
-        <p style={guideStyles.p}>Not all keywords are created equal.</p>
-        <ul style={guideStyles.ul}>
-            <li style={guideStyles.li}><strong>"Branded" Keywords:</strong> e.g., "Nike shoes". These might have a higher ACoS than your target, but lowering their bids is a fatal mistake. You must dominate the top spot for your brand keywords to defend against competitors.</li>
-            <li style={guideStyles.li}><strong>"Main Category" Keywords:</strong> e.g., "running shoes for men". These are the highest-traffic keywords. Lowering their bids just because ACoS is slightly high can cause you to lose <strong>Impression Share</strong>, giving ground to competitors.</li>
-        </ul>
-        <blockquote style={guideStyles.blockquote}>
-            <p style={guideStyles.p}><strong>Expert Advice:</strong></p>
-            <ol style={guideStyles.ol}>
-                <li style={guideStyles.li}><strong>Create Separate Campaigns:</strong> Consider creating separate campaigns for "Branded" and "Strategic" keywords.</li>
-                <li style={guideStyles.li}><strong>Don't Apply Aggressive Rules:</strong> <strong>DO NOT</strong> apply overly aggressive bid reduction rules to these campaigns. The goal here is presence and top position, not maximum profit on every click.</li>
-                <li style={guideStyles.li}><strong>Use Bid Increase Rules:</strong> Instead, you could create rules to <strong>increase bids</strong> if your <strong>Top-of-Search Impression Share</strong> drops below a certain threshold, ensuring you're always where customers look first.</li>
-            </ol>
-        </blockquote>
-        <p style={guideStyles.p}>By combining ACoS-based automation rules with a broader strategic mindset, you will build a system that is not only cost-effective but also sustainable and drives long-term growth.</p>
-    </div>
-);
-
 
 const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: AutomationRule | null, ruleType: string, onClose: () => void, onSave: (data: any) => void }) => {
     const [formData, setFormData] = useState<Partial<AutomationRule>>(() => {
