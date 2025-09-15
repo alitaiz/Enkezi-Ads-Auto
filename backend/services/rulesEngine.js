@@ -597,20 +597,72 @@ const evaluateSearchTermAutomationRule = async (rule, performanceData, throttled
 // --- Main Orchestration ---
 
 const isRuleDue = (rule) => {
-    if (!rule.last_run_at) return true;
-    const lastRun = new Date(rule.last_run_at);
     const now = new Date();
+    const lastRun = rule.last_run_at ? new Date(rule.last_run_at) : null;
     const frequency = rule.config.frequency;
-    if (!frequency || !frequency.unit || !frequency.value) return false;
-    
-    const diffMs = now.getTime() - lastRun.getTime();
-    let requiredMs = 0;
-    switch (frequency.unit) {
-        case 'minutes': requiredMs = frequency.value * 60 * 1000; break;
-        case 'hours': requiredMs = frequency.value * 60 * 60 * 1000; break;
-        case 'days': requiredMs = frequency.value * 24 * 60 * 60 * 1000; break;
+
+    if (!frequency || !frequency.unit || !frequency.value) {
+        console.warn(`[RulesEngine] Rule ${rule.id} has invalid frequency config.`);
+        return false;
     }
-    return diffMs >= requiredMs;
+
+    if (frequency.unit === 'minutes' || frequency.unit === 'hours') {
+        if (!lastRun) return true;
+        const diffMs = now.getTime() - lastRun.getTime();
+        let requiredMs = 0;
+        if (frequency.unit === 'minutes') requiredMs = frequency.value * 60 * 1000;
+        else requiredMs = frequency.value * 60 * 60 * 1000;
+        return diffMs >= requiredMs;
+    }
+
+    if (frequency.unit === 'days') {
+        // If no specific start time, use old logic based on 24-hour intervals
+        if (!frequency.startTime) {
+            if (!lastRun) return true;
+            const diffMs = now.getTime() - lastRun.getTime();
+            const requiredMs = frequency.value * 24 * 60 * 60 * 1000;
+            return diffMs >= requiredMs;
+        }
+
+        // Logic for 'days' with a specific start time in UTC-7
+        const timeZone = 'America/Phoenix'; // UTC-7, no DST.
+
+        const nowInTz = new Date(now.toLocaleString('en-US', { timeZone }));
+        const [startHour, startMinute] = frequency.startTime.split(':').map(Number);
+        
+        const isPastScheduledTimeToday = (nowInTz.getHours() > startHour) || 
+                                       (nowInTz.getHours() === startHour && nowInTz.getMinutes() >= startMinute);
+
+        if (!isPastScheduledTimeToday) {
+            return false; // Not time yet today.
+        }
+
+        if (!lastRun) {
+            return true; // It's past the scheduled time and has never run. It's due.
+        }
+
+        const lastRunInTz = new Date(lastRun.toLocaleString('en-US', { timeZone }));
+
+        // Calculate the difference in calendar days in the target timezone.
+        const startOfTodayInTz = new Date(nowInTz);
+        startOfTodayInTz.setHours(0, 0, 0, 0);
+        
+        const startOfLastRunDayInTz = new Date(lastRunInTz);
+        startOfLastRunDayInTz.setHours(0, 0, 0, 0);
+
+        const diffTime = startOfTodayInTz.getTime() - startOfLastRunDayInTz.getTime();
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+        // If not enough full days have passed, it's not due.
+        if (diffDays < frequency.value) {
+            return false;
+        }
+
+        // If enough days have passed, it's due because we are already past today's scheduled time.
+        return true;
+    }
+
+    return false;
 };
 
 const processRule = async (rule) => {

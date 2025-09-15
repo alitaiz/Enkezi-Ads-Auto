@@ -106,6 +106,7 @@ export interface AutomationRule {
         frequency: {
             unit: 'minutes' | 'hours' | 'days';
             value: number;
+            startTime?: string; // e.g., "01:00" for 1 AM
         };
         // NEW: Cooldown configuration to prevent rapid-fire actions on the same entity.
         cooldown?: {

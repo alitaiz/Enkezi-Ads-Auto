@@ -375,9 +375,11 @@ export function CampaignTable({
         const currentLogs = automationLogs[campaignId];
         if (!currentLogs) return null;
 
+        const filteredLogs = currentLogs.filter(log => log.status !== 'NO_ACTION');
+
         return (
             <div style={styles.logSubTableContainer}>
-                {currentLogs.length > 0 ? (
+                {filteredLogs.length > 0 ? (
                      <table style={styles.logSubTable}>
                         <thead>
                             <tr>
@@ -388,7 +390,7 @@ export function CampaignTable({
                             </tr>
                         </thead>
                         <tbody>
-                            {currentLogs.map(log => (
+                            {filteredLogs.map(log => (
                                 <tr key={log.id}>
                                     <td style={styles.logTd}>{new Date(log.run_at).toLocaleString()}</td>
                                     <td style={styles.logTd}>{log.rule_name}</td>
@@ -399,7 +401,7 @@ export function CampaignTable({
                         </tbody>
                     </table>
                 ) : (
-                    <div>No automation logs found for this campaign in the last 200 runs.</div>
+                    <div>No automation actions were taken for this campaign in the last 200 runs.</div>
                 )}
             </div>
         );
