@@ -125,9 +125,18 @@ const styles: { [key: string]: React.CSSProperties } = {
         color: '#6c757d',
         fontStyle: 'italic',
     },
+    ruleCellContainer: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+    },
     editRuleButton: {
-        background: 'none', border: 'none', cursor: 'pointer',
-        padding: '0 5px', fontSize: '1rem', marginLeft: '8px',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 0,
+        fontSize: '1rem',
+        flexShrink: 0,
     }
 };
 
@@ -481,7 +490,8 @@ export function CampaignTable({
                                 <td style={styles.td}>{formatPercent(campaign.acos)}</td>
                                 <td style={styles.td}>{formatRoAS(campaign.roas)}</td>
                                 <td style={styles.td}>
-                                     <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                                     <div style={styles.ruleCellContainer}>
+                                        <button onClick={() => onEditRules(campaign.campaignId, 'BID_ADJUSTMENT')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
                                         <div style={styles.ruleTagContainer}>
                                             {currentBidRules.length > 0 ? (
                                                 currentBidRules.map(rule => (
@@ -491,11 +501,11 @@ export function CampaignTable({
                                                 <span style={styles.noRuleText}>-- No Rule --</span>
                                             )}
                                         </div>
-                                        <button onClick={() => onEditRules(campaign.campaignId, 'BID_ADJUSTMENT')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
                                     </div>
                                 </td>
                                  <td style={styles.td}>
-                                     <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between'}}>
+                                     <div style={styles.ruleCellContainer}>
+                                        <button onClick={() => onEditRules(campaign.campaignId, 'SEARCH_TERM_AUTOMATION')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
                                          <div style={styles.ruleTagContainer}>
                                             {currentSearchTermRules.length > 0 ? (
                                                 currentSearchTermRules.map(rule => (
@@ -505,7 +515,6 @@ export function CampaignTable({
                                                 <span style={styles.noRuleText}>-- No Rule --</span>
                                             )}
                                         </div>
-                                        <button onClick={() => onEditRules(campaign.campaignId, 'SEARCH_TERM_AUTOMATION')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
                                     </div>
                                 </td>
                             </tr>
