@@ -200,7 +200,7 @@ export function AutomationView() {
     await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload), // FIX: Removed double JSON.stringify
+      body: JSON.stringify(payload),
     });
     setIsModalOpen(false);
     setEditingRule(null);
@@ -220,7 +220,7 @@ export function AutomationView() {
       (activeTab === 'budgetAcceleration' && r.rule_type === 'BUDGET_ACCELERATION')
   );
 
-  const ruleTypeTitles = {
+  const ruleTypeTitles: { [key: string]: string } = {
       bidAdjustment: 'Bid Adjustment Rules',
       searchTerm: 'Search Term Automation Rules',
       budgetAcceleration: 'Budget Acceleration Rules'
@@ -382,17 +382,17 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
         });
     };
 
-    const modalTitle = {
+    const modalTitle: { [key: string]: string } = {
         'bidadjustment': 'Edit Bid Adjustment Rule',
         'searchTerm': 'Edit Search Term Rule',
         'budgetacceleration': 'Edit Budget Acceleration Rule'
-    }[ruleType] || 'Edit Rule';
+    };
 
     return (
         <div style={styles.modalBackdrop} onClick={onClose}>
             <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <form style={styles.form} onSubmit={e => { e.preventDefault(); onSave(formData); }}>
-                    <h2 style={styles.modalHeader}>{modalTitle}</h2>
+                    <h2 style={styles.modalHeader}>{modalTitle[ruleType] || 'Edit Rule'}</h2>
                     
                     <div style={styles.formGroup}>
                         <label style={styles.label}>Rule Name</label>

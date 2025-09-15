@@ -133,8 +133,8 @@ export function RuleGuideContent() {
                 <li style={guideStyles.li}><strong>Tần suất chạy:</strong> Mỗi 30 phút.</li>
                 <li style={guideStyles.li}><strong>Logic:</strong>
                     <ul style={{paddingLeft: '20px'}}>
-                        <li><strong>NẾU</strong> `ROAS (Today) > 2.5` <strong>VÀ</strong> `Budget Utilization % (Today) > 75%`</li>
-                        <li><strong>THÌ</strong> `Increase budget by 50%`</li>
+                        <li><strong>NẾU</strong> <code style={guideStyles.code}>ROAS (Today) &gt; 2.5</code> <strong>VÀ</strong> <code style={guideStyles.code}>Budget Utilization % (Today) &gt; 75%</code></li>
+                        <li><strong>THÌ</strong> <code style={guideStyles.code}>Increase budget by 50%</code></li>
                     </ul>
                 </li>
             </ul>
