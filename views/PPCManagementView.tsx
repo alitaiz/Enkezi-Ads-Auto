@@ -369,44 +369,6 @@ export function PPCManagementView() {
         }
     };
 
-    const handleRuleAssignmentChange = useCallback(async (campaignId: number, ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION', newRuleIdStr: string) => {
-        const newRuleId = newRuleIdStr === 'none' ? null : parseInt(newRuleIdStr, 10);
-        
-        const rulesOfType = automationRules.filter(r => r.rule_type === ruleType);
-        const oldRule = rulesOfType.find(r => r.scope.campaignIds?.includes(campaignId));
-        const newRule = newRuleId ? rulesOfType.find(r => r.id === newRuleId) : null;
-        
-        if (oldRule?.id === newRule?.id) return;
-
-        const updates: Promise<any>[] = [];
-
-        if (oldRule) {
-            const updatedScope = { campaignIds: (oldRule.scope.campaignIds || []).filter(id => id !== campaignId) };
-            updates.push(fetch(`/api/automation/rules/${oldRule.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...oldRule, scope: updatedScope }),
-            }));
-        }
-
-        if (newRule) {
-            const updatedScope = { campaignIds: [...(newRule.scope.campaignIds || []), campaignId] };
-            updates.push(fetch(`/api/automation/rules/${newRule.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...newRule, scope: updatedScope }),
-            }));
-        }
-
-        try {
-            await Promise.all(updates);
-            await fetchRules(); // Refresh rules state from the source of truth
-        } catch (err) {
-            setError('Failed to update rule assignment.');
-            fetchRules(); // Re-fetch to revert optimistic UI
-        }
-    }, [automationRules, fetchRules]);
-
     const combinedCampaignData: CampaignWithMetrics[] = useMemo(() => {
         const enrichedCampaigns = campaigns.map(campaign => {
             const metrics = performanceMetrics[campaign.campaignId] || {
@@ -528,9 +490,12 @@ export function PPCManagementView() {
     const searchTermRules = useMemo(() => profileFilteredRules.filter(r => r.rule_type === 'SEARCH_TERM_AUTOMATION'), [profileFilteredRules]);
 
     const handleBulkApplyRules = async () => {
-        if (selectedCampaignIds.size === 0) return;
+        if (selectedCampaignIds.size === 0) {
+            alert('Please select at least one campaign.');
+            return;
+        }
         if (selectedBulkBidRule === 'none' && selectedBulkSearchTermRule === 'none') {
-            alert('Please select a rule to apply or remove.');
+            alert('Please select a bulk action to perform.');
             return;
         }
 
@@ -538,56 +503,53 @@ export function PPCManagementView() {
         const campaignsToUpdate = Array.from(selectedCampaignIds);
         const updates: Promise<Response>[] = [];
 
-        const applyRule = (ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION', newRuleIdStr: string) => {
-            const isRemoveAction = newRuleIdStr === 'remove';
-            const newRuleId = newRuleIdStr === 'none' || isRemoveAction ? null : parseInt(newRuleIdStr, 10);
-            
-            if (newRuleIdStr === 'none') return; // 'none' is the placeholder, so it does nothing.
+        const processAction = (actionValue: string) => {
+            if (!actionValue || actionValue === 'none') return;
 
-            const rulesOfType = ruleType === 'BID_ADJUSTMENT' ? bidAdjustmentRules : searchTermRules;
+            const [action, ruleIdStr] = actionValue.split('-');
+            const ruleId = parseInt(ruleIdStr, 10);
+            if (!action || isNaN(ruleId)) return;
+
+            const ruleToUpdate = automationRules.find(r => r.id === ruleId);
+            if (!ruleToUpdate) return;
             
-            const oldRules = rulesOfType.filter(r => 
-                campaignsToUpdate.some(campaignId => (r.scope.campaignIds || []).includes(campaignId))
-            );
-            
-            for (const oldRule of oldRules) {
-                const updatedScope = { 
-                    campaignIds: (oldRule.scope.campaignIds || []).filter(id => !campaignsToUpdate.includes(id as number)) 
-                };
-                updates.push(fetch(`/api/automation/rules/${oldRule.id}`, {
-                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...oldRule, scope: updatedScope }),
-                }));
+            const currentCampaignIds = new Set((ruleToUpdate.scope.campaignIds || []).map(id => Number(id)));
+
+            if (action === 'add') {
+                campaignsToUpdate.forEach(id => currentCampaignIds.add(id));
+            } else if (action === 'remove') {
+                campaignsToUpdate.forEach(id => currentCampaignIds.delete(id));
             }
 
-            if (!isRemoveAction && newRuleId !== null) {
-                const newRule = rulesOfType.find(r => r.id === newRuleId);
-                if (newRule) {
-                     const updatedScope = { 
-                        campaignIds: [...new Set([...(newRule.scope.campaignIds || []).map(Number), ...campaignsToUpdate])] 
-                    };
-                     updates.push(fetch(`/api/automation/rules/${newRule.id}`, {
-                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ ...newRule, scope: updatedScope }),
-                    }));
-                }
-            }
+            const updatedScope = { campaignIds: Array.from(currentCampaignIds) };
+            updates.push(fetch(`/api/automation/rules/${ruleId}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...ruleToUpdate, scope: updatedScope }),
+            }));
         };
 
-        if (selectedBulkBidRule !== 'none') applyRule('BID_ADJUSTMENT', selectedBulkBidRule);
-        if (selectedBulkSearchTermRule !== 'none') applyRule('SEARCH_TERM_AUTOMATION', selectedBulkSearchTermRule);
+        processAction(selectedBulkBidRule);
+        processAction(selectedBulkSearchTermRule);
+
+        if (updates.length === 0) {
+            setLoading(prev => ({...prev, rules: false}));
+            return;
+        }
 
         try {
             const responses = await Promise.all(updates);
             const failed = responses.find(res => !res.ok);
-            if (failed) throw new Error('One or more API calls failed during bulk update.');
+            if (failed) {
+                const errorData = await failed.json().catch(() => ({error: 'An unknown error occurred during bulk update.'}));
+                throw new Error(errorData.error);
+            }
             
             await fetchRules();
             setSelectedCampaignIds(new Set());
             setSelectedBulkBidRule('none');
             setSelectedBulkSearchTermRule('none');
         } catch (err) {
-            setError('Failed to apply rules in bulk.');
+            setError(err instanceof Error ? err.message : 'Failed to apply rules in bulk.');
             fetchRules(); // Re-fetch to revert UI
         } finally {
             setLoading(prev => ({...prev, rules: false}));
@@ -658,17 +620,23 @@ export function PPCManagementView() {
                 {selectedCampaignIds.size > 0 && (
                     <div style={styles.bulkActionContainer}>
                         <span style={{fontWeight: 600}}>{selectedCampaignIds.size} selected</span>
-                        <select
+                         <select
                             value={selectedBulkBidRule}
                             onChange={e => setSelectedBulkBidRule(e.target.value)}
                             style={styles.profileSelector}
                             disabled={loading.rules}
                         >
-                            <option value="none">-- Assign Bid Rule --</option>
-                            <option value="remove" style={{ color: 'var(--danger-color)', fontWeight: 'bold' }}>-- Remove Rule --</option>
-                            {bidAdjustmentRules.map(rule => (
-                                <option key={rule.id} value={rule.id}>{rule.name}</option>
-                            ))}
+                            <option value="none">-- Bulk Edit Bid Rules --</option>
+                            <optgroup label="ADD Rule to Selected">
+                                {bidAdjustmentRules.map(rule => (
+                                    <option key={`add-${rule.id}`} value={`add-${rule.id}`}>{rule.name}</option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="REMOVE Rule from Selected">
+                                {bidAdjustmentRules.map(rule => (
+                                    <option key={`remove-${rule.id}`} value={`remove-${rule.id}`}>{rule.name}</option>
+                                ))}
+                            </optgroup>
                         </select>
                          <select
                             value={selectedBulkSearchTermRule}
@@ -676,11 +644,17 @@ export function PPCManagementView() {
                             style={styles.profileSelector}
                             disabled={loading.rules}
                         >
-                            <option value="none">-- Assign Search Term Rule --</option>
-                             <option value="remove" style={{ color: 'var(--danger-color)', fontWeight: 'bold' }}>-- Remove Rule --</option>
-                            {searchTermRules.map(rule => (
-                                <option key={rule.id} value={rule.id}>{rule.name}</option>
-                            ))}
+                            <option value="none">-- Bulk Edit Search Term Rules --</option>
+                            <optgroup label="ADD Rule to Selected">
+                                {searchTermRules.map(rule => (
+                                    <option key={`add-${rule.id}`} value={`add-${rule.id}`}>{rule.name}</option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="REMOVE Rule from Selected">
+                                {searchTermRules.map(rule => (
+                                    <option key={`remove-${rule.id}`} value={`remove-${rule.id}`}>{rule.name}</option>
+                                ))}
+                            </optgroup>
                         </select>
                         <button onClick={handleBulkApplyRules} style={styles.bulkActionButton} disabled={loading.rules}>
                             {loading.rules ? 'Applying...' : 'Apply'}
@@ -720,7 +694,6 @@ export function PPCManagementView() {
                         loadingLogs={loadingLogs}
                         logsError={logsError}
                         automationRules={profileFilteredRules}
-                        onUpdateRuleAssignment={handleRuleAssignmentChange}
                         selectedCampaignIds={selectedCampaignIds}
                         onSelectCampaign={handleSelectCampaign}
                         onSelectAll={handleSelectAllCampaigns}

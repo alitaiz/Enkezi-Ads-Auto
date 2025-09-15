@@ -388,6 +388,7 @@ const evaluateBidAdjustmentRule = async (rule, performanceData, throttledEntitie
 
     const allEntities = [...keywordsToProcess.values(), ...targetsToProcess.values()];
     for (const entity of allEntities) {
+        // The core of granular cooldown: skip this specific entity if it's on cooldown, but continue to process others.
         if (throttledEntities.has(entity.entityId)) continue;
         if (typeof entity.currentBid !== 'number') continue;
         
@@ -618,7 +619,9 @@ const processRule = async (rule) => {
     try {
         const campaignIds = rule.scope?.campaignIds || [];
 
-        // --- Cooldown Logic: Check throttled entities ---
+        // --- Cooldown Logic: Check throttled entities (keywords/targets) at the individual level ---
+        // This ensures that if an action was recently taken on a specific keyword, only that keyword is paused,
+        // not the entire campaign.
         const cooldownConfig = rule.config.cooldown || { value: 0 };
         let throttledEntities = new Set();
         if (cooldownConfig.value > 0) {
@@ -628,7 +631,7 @@ const processRule = async (rule) => {
             );
             throttledEntities = new Set(throttleCheckResult.rows.map(r => r.entity_id));
             if (throttledEntities.size > 0) {
-                console.log(`[RulesEngine] Found ${throttledEntities.size} throttled entities for rule "${rule.name}".`);
+                console.log(`[RulesEngine] Found ${throttledEntities.size} individual entities (keywords/targets) on cooldown for rule "${rule.name}".`);
             }
         }
         
@@ -652,7 +655,8 @@ const processRule = async (rule) => {
              throw new Error(`Unknown rule type: ${rule.rule_type}`);
         }
 
-        // --- Cooldown Logic: Apply new throttles ---
+        // --- Cooldown Logic: Apply new throttles at the individual entity level ---
+        // For each keyword or target that was acted upon, record its specific ID in the throttle table.
         if (result.actedOnEntities && result.actedOnEntities.length > 0 && cooldownConfig.value > 0) {
             const { value, unit } = cooldownConfig;
             const interval = `${value} ${unit}`;
@@ -662,8 +666,9 @@ const processRule = async (rule) => {
                 ON CONFLICT (rule_id, entity_id) DO UPDATE
                 SET throttle_until = EXCLUDED.throttle_until;
             `;
+            // The query's `unnest` function efficiently inserts or updates a row for each individual entity ID.
             await pool.query(upsertQuery, [rule.id, result.actedOnEntities, interval]);
-            console.log(`[RulesEngine] Throttled ${result.actedOnEntities.length} entities for rule "${rule.name}" for ${interval}.`);
+            console.log(`[RulesEngine] Applied cooldown to ${result.actedOnEntities.length} individual entities for rule "${rule.name}" for ${interval}.`);
         }
 
 
