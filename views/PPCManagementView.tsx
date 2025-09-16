@@ -445,7 +445,7 @@ export function PPCManagementView() {
     };
 
     const combinedCampaignData: CampaignWithMetrics[] = useMemo(() => {
-        const enrichedCampaigns = campaigns.map(campaign => {
+        return campaigns.map(campaign => {
             const metrics = performanceMetrics[campaign.campaignId] || {
                 campaignId: campaign.campaignId,
                 impressions: 0,
@@ -470,8 +470,6 @@ export function PPCManagementView() {
                 ctr: impressions > 0 ? clicks / impressions : 0,
             };
         });
-
-        return enrichedCampaigns.filter(c => c.impressions > 0 || c.clicks > 0 || c.spend > 0 || c.orders > 0 || c.sales > 0);
     }, [campaigns, performanceMetrics]);
     
     const dataForSummary = useMemo(() => {
