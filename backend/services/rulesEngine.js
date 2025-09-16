@@ -439,8 +439,13 @@ const evaluateBidAdjustmentRule = async (rule, performanceData, throttledEntitie
                     data: { targetIdFilter: { include: chunk } },
                     headers: { 'Content-Type': 'application/vnd.spTargetingClause.v3+json', 'Accept': 'application/vnd.spTargetingClause.v3+json' }
                 });
-                if (response.targets) {
-                    allFetchedTargets.push(...response.targets);
+                
+                // FIX: The Amazon API response for listing targets might use 'targetingClauses' as the key,
+                // similar to update operations, not just 'targets'. This change checks for both keys to robustly
+                // find the array of targets, preventing the system from incorrectly falling back to the ad group default bid.
+                const targetsInResponse = response.targets || response.targetingClauses;
+                if (targetsInResponse && Array.isArray(targetsInResponse)) {
+                    allFetchedTargets.push(...targetsInResponse);
                 }
             }
 
