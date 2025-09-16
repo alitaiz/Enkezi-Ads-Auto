@@ -53,7 +53,7 @@ const styles: { [key: string]: React.CSSProperties } = {
         borderRadius: '4px',
         border: '1px solid var(--border-color)',
         fontSize: '1rem',
-        minWidth: '250px',
+        minWidth: '220px',
     },
     dateButton: {
         padding: '8px 12px',
@@ -210,6 +210,7 @@ export function PPCManagementView() {
 
     const [currentPage, setCurrentPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
+    const [excludeTerm, setExcludeTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof CampaignWithMetrics; direction: 'ascending' | 'descending' } | null>({ key: 'spend', direction: 'descending' });
     const [statusFilter, setStatusFilter] = useState<CampaignState | 'all'>('enabled');
     
@@ -472,15 +473,31 @@ export function PPCManagementView() {
         });
     }, [campaigns, performanceMetrics]);
     
-    const dataForSummary = useMemo(() => {
-         if (!searchTerm) return combinedCampaignData;
-         return combinedCampaignData.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [combinedCampaignData, searchTerm]);
+    const filteredData = useMemo(() => {
+        let data = combinedCampaignData;
+
+        if (statusFilter !== 'all') {
+            data = data.filter(c => c.state === statusFilter);
+        }
+        if (searchTerm) {
+            data = data.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        }
+        if (excludeTerm.trim()) {
+            const excludeKeywords = excludeTerm.toLowerCase().split(',').map(k => k.trim()).filter(Boolean);
+            if (excludeKeywords.length > 0) {
+                data = data.filter(c => {
+                    const campaignNameLower = c.name.toLowerCase();
+                    return !excludeKeywords.some(keyword => campaignNameLower.includes(keyword));
+                });
+            }
+        }
+        return data;
+    }, [combinedCampaignData, statusFilter, searchTerm, excludeTerm]);
 
     const summaryMetrics: SummaryMetricsData | null = useMemo(() => {
         if (loading.data) return null;
         
-        const total = dataForSummary.reduce((acc, campaign) => {
+        const total = filteredData.reduce((acc, campaign) => {
             acc.spend += campaign.spend || 0;
             acc.sales += campaign.sales || 0;
             acc.orders += campaign.orders || 0;
@@ -496,17 +513,10 @@ export function PPCManagementView() {
             cpc: total.clicks > 0 ? total.spend / total.clicks : 0,
             ctr: total.impressions > 0 ? total.clicks / total.impressions : 0,
         };
-    }, [dataForSummary, loading.data]);
+    }, [filteredData, loading.data]);
 
     const finalDisplayData: CampaignWithMetrics[] = useMemo(() => {
-        let data = combinedCampaignData;
-
-        if (statusFilter !== 'all') {
-            data = data.filter(c => c.state === statusFilter);
-        }
-        if (searchTerm) {
-            data = data.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        }
+        let data = [...filteredData];
 
         if (sortConfig !== null) {
             data.sort((a, b) => {
@@ -519,7 +529,7 @@ export function PPCManagementView() {
             });
         }
         return data;
-    }, [combinedCampaignData, statusFilter, searchTerm, sortConfig]);
+    }, [filteredData, sortConfig]);
 
     const paginatedCampaigns = useMemo(() => {
         const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -683,6 +693,7 @@ export function PPCManagementView() {
                 </div>
                  <div style={styles.controlGroup}>
                      <input type="text" placeholder="Search by campaign name..." style={styles.searchInput} value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); setSelectedCampaignIds(new Set()); }} disabled={loading.data} />
+                     <input type="text" placeholder="Exclude names (e.g., Auto, Test)" style={styles.searchInput} value={excludeTerm} onChange={e => { setExcludeTerm(e.target.value); setCurrentPage(1); setSelectedCampaignIds(new Set()); }} disabled={loading.data} />
                 </div>
                 {selectedCampaignIds.size > 0 && (
                     <div style={styles.bulkActionContainer}>
@@ -729,7 +740,7 @@ export function PPCManagementView() {
             
             {(loading.data || loading.rules) ? (
                 <div style={styles.loader}>Loading campaign data...</div>
-            ) : finalDisplayData.length > 0 || searchTerm ? (
+            ) : finalDisplayData.length > 0 || searchTerm || excludeTerm ? (
                 <>
                     <CampaignTable 
                         campaigns={paginatedCampaigns} 
