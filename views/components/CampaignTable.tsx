@@ -214,15 +214,17 @@ function useResizableColumns(initialWidths: number[]) {
 
 // Interfaces for the new, structured log details
 interface TriggeringMetric {
-  metric: 'spend' | 'sales' | 'acos' | 'orders' | 'clicks' | 'impressions';
-  timeWindow: number;
+  metric: 'spend' | 'sales' | 'acos' | 'orders' | 'clicks' | 'impressions' | 'roas' | 'budgetUtilization';
+  timeWindow: number | 'TODAY';
   value: number;
   condition: string;
 }
 interface LogChange {
   entityText: string;
-  oldBid: number;
-  newBid: number;
+  oldBid?: number;
+  newBid?: number;
+  oldBudget?: number;
+  newBudget?: number;
   triggeringMetrics: TriggeringMetric[];
 }
 interface LogNegative {
@@ -322,7 +324,10 @@ export function CampaignTable({
 
     const formatMetricValue = (value: number, metric: TriggeringMetric['metric']) => {
         switch (metric) {
-            case 'acos': return formatPercent(value);
+            case 'acos': 
+            case 'roas':
+            case 'budgetUtilization':
+                return formatPercent(value);
             case 'spend':
             case 'sales': return formatPrice(value);
             default: return formatNumber(value);
@@ -342,18 +347,43 @@ export function CampaignTable({
         
         return (
             <ul style={styles.detailsList}>
-                {changes.map((change, index) => (
-                    <li key={`c-${index}`}>
-                        Target "{change.entityText}": bid changed from {formatPrice(change.oldBid)} to {formatPrice(change.newBid)}
-                        <ul style={styles.metricList}>
-                            {change.triggeringMetrics.map((metric, mIndex) => (
-                                <li key={mIndex} style={styles.metricListItem}>
-                                    {metric.metric} ({metric.timeWindow} days) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
-                                </li>
-                            ))}
-                        </ul>
-                    </li>
-                ))}
+                {changes.map((change, index) => {
+                    // BUDGET ACCELERATION LOG
+                    if (typeof change.oldBudget !== 'undefined' && typeof change.newBudget !== 'undefined') {
+                        return (
+                            <li key={`c-${index}`}>
+                                Budget changed from {formatPrice(change.oldBudget)} to {formatPrice(change.newBudget)}
+                                {(change.triggeringMetrics && change.triggeringMetrics.length > 0) && (
+                                    <ul style={styles.metricList}>
+                                        {change.triggeringMetrics.map((metric, mIndex) => (
+                                            <li key={mIndex} style={styles.metricListItem}>
+                                                {metric.metric} ({metric.timeWindow}) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </li>
+                        );
+                    }
+                    // BID ADJUSTMENT LOG
+                    if (typeof change.oldBid !== 'undefined' && typeof change.newBid !== 'undefined') {
+                        return (
+                             <li key={`c-${index}`}>
+                                Target "{change.entityText}": bid changed from {formatPrice(change.oldBid)} to {formatPrice(change.newBid)}
+                                {(change.triggeringMetrics && change.triggeringMetrics.length > 0) && (
+                                    <ul style={styles.metricList}>
+                                        {change.triggeringMetrics.map((metric, mIndex) => (
+                                            <li key={mIndex} style={styles.metricListItem}>
+                                                {metric.metric} ({metric.timeWindow} days) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </li>
+                        );
+                    }
+                    return null;
+                })}
                 {newNegatives.map((neg, index) => (
                     <li key={`n-${index}`}>
                          Negated "{neg.searchTerm}" as {neg.matchType?.replace(/_/g, ' ')}
