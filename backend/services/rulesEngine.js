@@ -685,15 +685,8 @@ const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
     const referenceDate = new Date(getLocalDateString(REPORTING_TIMEZONE));
     const todayDateStr = referenceDate.toISOString().split('T')[0];
 
-    // Check which campaigns were already overridden today to prevent runaway increases
-    const alreadyOverriddenResult = await pool.query(
-        `SELECT campaign_id FROM daily_budget_overrides WHERE override_date = $1`,
-        [todayDateStr]
-    );
-    const overriddenCampaignIds = new Set(alreadyOverriddenResult.rows.map(r => String(r.campaign_id)));
-    
     for (const campaignPerf of performanceData.values()) {
-        if (overriddenCampaignIds.has(String(campaignPerf.campaignId))) continue;
+        const currentBudget = campaignPerf.originalBudget; // This is the current budget from the API
 
         for (const group of rule.config.conditionGroups) {
             let allConditionsMet = true;
@@ -702,7 +695,7 @@ const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                 
                 let metricValue;
                 if (condition.metric === 'budgetUtilization') {
-                    metricValue = campaignPerf.originalBudget > 0 ? (metrics.spend / campaignPerf.originalBudget) * 100 : 0;
+                    metricValue = currentBudget > 0 ? (metrics.spend / currentBudget) * 100 : 0;
                 } else {
                     metricValue = metrics[condition.metric];
                 }
@@ -717,27 +710,32 @@ const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                 const { type, value } = group.action;
                 let newBudget;
                 if (type === 'increaseBudgetPercent') {
-                    newBudget = campaignPerf.originalBudget * (1 + (value / 100));
+                    newBudget = currentBudget * (1 + (value / 100));
                 } else if (type === 'setBudgetAmount') {
                     newBudget = value;
                 }
                 newBudget = parseFloat(newBudget.toFixed(2));
 
-                if (newBudget > campaignPerf.originalBudget) {
+                if (newBudget > currentBudget) {
+                    // Atomically insert the original budget on the FIRST increase of the day.
+                    // Subsequent attempts will be ignored due to the unique constraint,
+                    // preserving the true original budget.
                     await pool.query(
-                        `INSERT INTO daily_budget_overrides (campaign_id, original_budget, override_date) VALUES ($1, $2, $3)`,
-                        [campaignPerf.campaignId, campaignPerf.originalBudget, todayDateStr]
+                        `INSERT INTO daily_budget_overrides (campaign_id, original_budget, override_date) 
+                         VALUES ($1, $2, $3) 
+                         ON CONFLICT (campaign_id, override_date) DO NOTHING`,
+                        [campaignPerf.campaignId, currentBudget, todayDateStr]
                     );
 
                     campaignsToUpdate.push({
-                        campaignId: Number(campaignPerf.campaignId),
-                        budget: { amount: newBudget }
+                        campaignId: String(campaignPerf.campaignId),
+                        budget: { budget: newBudget, budgetType: 'DAILY' }
                     });
 
                     if (!actionsByCampaign[campaignPerf.campaignId]) actionsByCampaign[campaignPerf.campaignId] = { changes: [] };
                     actionsByCampaign[campaignPerf.campaignId].changes.push({
                         entityType: 'campaign', entityId: campaignPerf.campaignId,
-                        oldBudget: campaignPerf.originalBudget, newBudget
+                        oldBudget: currentBudget, newBudget
                     });
                 }
                 break; // First match wins
@@ -948,8 +946,8 @@ const resetBudgets = async () => {
         }
 
         const updates = overrides.map(o => ({
-            campaignId: Number(o.campaign_id),
-            budget: { amount: parseFloat(o.original_budget) }
+            campaignId: String(o.campaign_id),
+            budget: { budget: parseFloat(o.original_budget), budgetType: 'DAILY' }
         }));
 
         await amazonAdsApiRequest({
