@@ -383,16 +383,26 @@ const evaluateBidAdjustmentRule = async (rule, performanceData, throttledEntitie
     const keywordsWithoutBids = [];
     const targetsWithoutBids = [];
 
-    // Attempt to fetch specific bids for all keywords.
+    // Attempt to fetch specific bids for all keywords, in chunks.
     if (keywordsToProcess.size > 0) {
         try {
-            const keywordIds = Array.from(keywordsToProcess.keys());
-            const response = await amazonAdsApiRequest({
-                method: 'post', url: '/sp/keywords/list', profileId: rule.profile_id,
-                data: { keywordIdFilter: { include: keywordIds } },
-                headers: { 'Content-Type': 'application/vnd.spKeyword.v3+json', 'Accept': 'application/vnd.spKeyword.v3+json' }
-            });
-            (response.keywords || []).forEach(kw => {
+            const allKeywordIds = Array.from(keywordsToProcess.keys());
+            const chunkSize = 100;
+            const allFetchedKeywords = [];
+
+            for (let i = 0; i < allKeywordIds.length; i += chunkSize) {
+                const chunk = allKeywordIds.slice(i, i + chunkSize);
+                const response = await amazonAdsApiRequest({
+                    method: 'post', url: '/sp/keywords/list', profileId: rule.profile_id,
+                    data: { keywordIdFilter: { include: chunk } },
+                    headers: { 'Content-Type': 'application/vnd.spKeyword.v3+json', 'Accept': 'application/vnd.spKeyword.v3+json' }
+                });
+                if (response.keywords) {
+                    allFetchedKeywords.push(...response.keywords);
+                }
+            }
+
+            allFetchedKeywords.forEach(kw => {
                 const perfData = keywordsToProcess.get(kw.keywordId.toString());
                 if (perfData) {
                     if (typeof kw.bid === 'number') {
@@ -402,19 +412,39 @@ const evaluateBidAdjustmentRule = async (rule, performanceData, throttledEntitie
                     }
                 }
             });
-        } catch (e) { console.error('[RulesEngine] Failed to fetch current keyword bids.', e); }
+
+            const foundKeywordIds = new Set(allFetchedKeywords.map(kw => kw.keywordId.toString()));
+            for (const [keywordId, perfData] of keywordsToProcess.entries()) {
+                if (!foundKeywordIds.has(keywordId)) {
+                    keywordsWithoutBids.push(perfData);
+                }
+            }
+        } catch (e) {
+            console.error('[RulesEngine] Failed to fetch current keyword bids. All keywords in this batch will fallback to default bid.', e);
+            keywordsToProcess.forEach(perfData => keywordsWithoutBids.push(perfData));
+        }
     }
 
-    // Attempt to fetch specific bids for ALL targets (including auto-targets).
+    // Attempt to fetch specific bids for ALL targets, in chunks.
     if (targetsToProcess.size > 0) {
         try {
-            const targetIds = Array.from(targetsToProcess.keys());
-            const response = await amazonAdsApiRequest({
-                method: 'post', url: '/sp/targets/list', profileId: rule.profile_id,
-                data: { targetIdFilter: { include: targetIds } },
-                headers: { 'Content-Type': 'application/vnd.spTargetingClause.v3+json', 'Accept': 'application/vnd.spTargetingClause.v3+json' }
-            });
-            (response.targets || []).forEach(t => {
+            const allTargetIds = Array.from(targetsToProcess.keys());
+            const chunkSize = 100;
+            const allFetchedTargets = [];
+            
+            for (let i = 0; i < allTargetIds.length; i += chunkSize) {
+                const chunk = allTargetIds.slice(i, i + chunkSize);
+                 const response = await amazonAdsApiRequest({
+                    method: 'post', url: '/sp/targets/list', profileId: rule.profile_id,
+                    data: { targetIdFilter: { include: chunk } },
+                    headers: { 'Content-Type': 'application/vnd.spTargetingClause.v3+json', 'Accept': 'application/vnd.spTargetingClause.v3+json' }
+                });
+                if (response.targets) {
+                    allFetchedTargets.push(...response.targets);
+                }
+            }
+
+            allFetchedTargets.forEach(t => {
                 const perfData = targetsToProcess.get(t.targetId.toString());
                 if (perfData) {
                     if (typeof t.bid === 'number') {
@@ -424,14 +454,17 @@ const evaluateBidAdjustmentRule = async (rule, performanceData, throttledEntitie
                     }
                 }
             });
-             // Any target not found in the response needs its bid from the ad group.
-            const foundTargetIds = new Set((response.targets || []).map(t => t.targetId.toString()));
+            
+            const foundTargetIds = new Set(allFetchedTargets.map(t => t.targetId.toString()));
             for (const [targetId, perfData] of targetsToProcess.entries()) {
                 if (!foundTargetIds.has(targetId)) {
                     targetsWithoutBids.push(perfData);
                 }
             }
-        } catch (e) { console.error('[RulesEngine] Failed to fetch current target bids.', e); }
+        } catch (e) {
+            console.error('[RulesEngine] Failed to fetch current target bids. All targets in this batch will fallback to default bid.', e);
+            targetsToProcess.forEach(perfData => targetsWithoutBids.push(perfData));
+        }
     }
     
     // Fallback: Fetch ad group default bids for any entity that didn't have a specific bid.
