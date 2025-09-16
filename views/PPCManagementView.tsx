@@ -132,7 +132,7 @@ const formatDateForQuery = (d: Date) => {
 };
 
 // FIX: Changed campaign.id to type number to match data model.
-const RuleEditModal = ({ isOpen, onClose, campaign, allRules, onSave }: { isOpen: boolean, onClose: () => void, campaign: {id: number; name: string; type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION'} | null, allRules: AutomationRule[], onSave: (campaignId: number, initialIds: Set<number>, newIds: Set<number>) => void }) => {
+const RuleEditModal = ({ isOpen, onClose, campaign, allRules, onSave }: { isOpen: boolean, onClose: () => void, campaign: {id: number; name: string; type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION' | 'BUDGET_ACCELERATION'} | null, allRules: AutomationRule[], onSave: (campaignId: number, initialIds: Set<number>, newIds: Set<number>) => void }) => {
     if (!isOpen || !campaign) return null;
 
     const relevantRules = allRules.filter(r => r.rule_type === campaign.type);
@@ -156,6 +156,12 @@ const RuleEditModal = ({ isOpen, onClose, campaign, allRules, onSave }: { isOpen
     const handleSave = () => {
         onSave(campaign.id, initialSelectedIds, selectedIds);
     };
+    
+    const ruleTypeName = {
+        'BID_ADJUSTMENT': 'Bid Adjustment',
+        'SEARCH_TERM_AUTOMATION': 'Search Term',
+        'BUDGET_ACCELERATION': 'Budget Acceleration'
+    }[campaign.type];
 
     return (
         <div style={styles.modalBackdrop} onClick={onClose}>
@@ -172,7 +178,7 @@ const RuleEditModal = ({ isOpen, onClose, campaign, allRules, onSave }: { isOpen
                             />
                             {rule.name}
                         </label>
-                    )) : <p>No {campaign.type === 'BID_ADJUSTMENT' ? 'Bid Adjustment' : 'Search Term'} rules found for this profile.</p>}
+                    )) : <p>No {ruleTypeName} rules found for this profile.</p>}
                 </div>
                 <div style={styles.modalFooter}>
                     <button onClick={onClose} style={{...styles.bulkActionButton, backgroundColor: '#6c757d'}}>Cancel</button>
@@ -216,11 +222,12 @@ export function PPCManagementView() {
     // FIX: Changed state types from string to number for campaign IDs.
     const [selectedCampaignIds, setSelectedCampaignIds] = useState<Set<number>>(new Set());
     const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
-    const [editingCampaign, setEditingCampaign] = useState<{id: number; name: string; type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION'} | null>(null);
+    const [editingCampaign, setEditingCampaign] = useState<{id: number; name: string; type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION' | 'BUDGET_ACCELERATION'} | null>(null);
 
     const [bulkAction, setBulkAction] = useState<'none' | 'add' | 'remove'>('none');
     const [bulkSelectedBidRules, setBulkSelectedBidRules] = useState<string[]>([]);
     const [bulkSelectedSearchTermRules, setBulkSelectedSearchTermRules] = useState<string[]>([]);
+    const [bulkSelectedBudgetRules, setBulkSelectedBudgetRules] = useState<string[]>([]);
 
 
     useEffect(() => {
@@ -559,9 +566,10 @@ export function PPCManagementView() {
     
     const bidAdjustmentRules = useMemo(() => profileFilteredRules.filter(r => r.rule_type === 'BID_ADJUSTMENT'), [profileFilteredRules]);
     const searchTermRules = useMemo(() => profileFilteredRules.filter(r => r.rule_type === 'SEARCH_TERM_AUTOMATION'), [profileFilteredRules]);
+    const budgetAccelerationRules = useMemo(() => profileFilteredRules.filter(r => r.rule_type === 'BUDGET_ACCELERATION'), [profileFilteredRules]);
 
     // FIX: Changed campaignId parameter type from string to number.
-    const handleEditCampaignRules = (campaignId: number, ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION') => {
+    const handleEditCampaignRules = (campaignId: number, ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION' | 'BUDGET_ACCELERATION') => {
         const campaign = combinedCampaignData.find(c => c.campaignId === campaignId);
         if (campaign) {
             setEditingCampaign({ id: campaignId, name: campaign.name, type: ruleType });
@@ -573,7 +581,9 @@ export function PPCManagementView() {
     const handleSaveIndividualRules = async (campaignId: number, initialRuleIds: Set<number>, newRuleIds: Set<number>) => {
         setLoading(prev => ({ ...prev, rules: true }));
         const updates: Promise<any>[] = [];
-        const allRelevantRules = editingCampaign?.type === 'BID_ADJUSTMENT' ? bidAdjustmentRules : searchTermRules;
+        const allRelevantRules = editingCampaign?.type === 'BID_ADJUSTMENT' ? bidAdjustmentRules : 
+                                 editingCampaign?.type === 'SEARCH_TERM_AUTOMATION' ? searchTermRules :
+                                 budgetAccelerationRules;
 
         for (const rule of allRelevantRules) {
             const wasSelected = initialRuleIds.has(rule.id);
@@ -609,7 +619,7 @@ export function PPCManagementView() {
     const handleBulkApplyRules = async () => {
         if (selectedCampaignIds.size === 0) return alert('Please select at least one campaign.');
         if (bulkAction === 'none') return alert('Please select a bulk action.');
-        const allSelectedRules = [...bulkSelectedBidRules, ...bulkSelectedSearchTermRules];
+        const allSelectedRules = [...bulkSelectedBidRules, ...bulkSelectedSearchTermRules, ...bulkSelectedBudgetRules];
         if (allSelectedRules.length === 0) return alert('Please select at least one rule to apply.');
 
         setLoading(prev => ({ ...prev, rules: true }));
@@ -641,6 +651,7 @@ export function PPCManagementView() {
             setBulkAction('none');
             setBulkSelectedBidRules([]);
             setBulkSelectedSearchTermRules([]);
+            setBulkSelectedBudgetRules([]);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to apply rules in bulk.');
             fetchRules();
@@ -695,6 +706,12 @@ export function PPCManagementView() {
                                     <label style={{fontWeight:500}}>Search Term Rules:</label>
                                     <select multiple value={bulkSelectedSearchTermRules} onChange={e => setBulkSelectedSearchTermRules(Array.from(e.target.selectedOptions, option => option.value))} style={styles.multiSelect} disabled={loading.rules}>
                                         {searchTermRules.map(rule => (<option key={rule.id} value={rule.id}>{rule.name}</option>))}
+                                    </select>
+                                </div>
+                                <div style={styles.controlGroup}>
+                                    <label style={{fontWeight:500}}>Budget Rules:</label>
+                                    <select multiple value={bulkSelectedBudgetRules} onChange={e => setBulkSelectedBudgetRules(Array.from(e.target.selectedOptions, option => option.value))} style={styles.multiSelect} disabled={loading.rules}>
+                                        {budgetAccelerationRules.map(rule => (<option key={rule.id} value={rule.id}>{rule.name}</option>))}
                                     </select>
                                 </div>
                                 <button onClick={handleBulkApplyRules} style={styles.bulkActionButton} disabled={loading.rules}>{loading.rules ? 'Applying...' : 'Apply'}</button>

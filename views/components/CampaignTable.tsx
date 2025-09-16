@@ -247,7 +247,7 @@ interface AutomationLog {
 interface CampaignTableProps {
     campaigns: CampaignWithMetrics[];
     onUpdateCampaign: (campaignId: number, update: { state?: CampaignState; budget?: { amount: number } }) => void;
-    onEditRules: (campaignId: number, ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION') => void;
+    onEditRules: (campaignId: number, ruleType: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION' | 'BUDGET_ACCELERATION') => void;
     sortConfig: { key: SortableKeys; direction: 'ascending' | 'descending' } | null;
     onRequestSort: (key: SortableKeys) => void;
     expandedCampaignId: number | null;
@@ -273,6 +273,7 @@ export function CampaignTable({
 
     const bidAdjustmentRules = useMemo(() => automationRules.filter(r => r.rule_type === 'BID_ADJUSTMENT'), [automationRules]);
     const searchTermRules = useMemo(() => automationRules.filter(r => r.rule_type === 'SEARCH_TERM_AUTOMATION'), [automationRules]);
+    const budgetAccelerationRules = useMemo(() => automationRules.filter(r => r.rule_type === 'BUDGET_ACCELERATION'), [automationRules]);
 
     const resizableColumns = useMemo(() => [
         { id: 'name', label: 'Campaign Name', isSortable: true },
@@ -287,10 +288,11 @@ export function CampaignTable({
         { id: 'roas', label: 'RoAS', isSortable: true },
         { id: 'bidAdjustmentRule', label: 'Bid Adjustment Rule', isSortable: false },
         { id: 'searchTermRule', label: 'Search Term Rule', isSortable: false },
+        { id: 'budgetAccelerationRule', label: 'Budget Acceleration Rule', isSortable: false },
     ], []);
 
     const initialWidths = useMemo(() => [
-        300, 100, 120, 100, 100, 100, 110, 100, 100, 100, 220, 220
+        300, 100, 120, 100, 100, 100, 110, 100, 100, 100, 220, 220, 220
     ], []);
 
     const { widths, getHeaderProps, resizingColumnIndex } = useResizableColumns(initialWidths);
@@ -453,6 +455,7 @@ export function CampaignTable({
                     {campaigns.map(campaign => {
                          const currentBidRules = bidAdjustmentRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
                         const currentSearchTermRules = searchTermRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
+                        const currentBudgetRules = budgetAccelerationRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
 
                         return (
                         <React.Fragment key={campaign.campaignId}>
@@ -511,6 +514,20 @@ export function CampaignTable({
                                          <div style={styles.ruleTagContainer}>
                                             {currentSearchTermRules.length > 0 ? (
                                                 currentSearchTermRules.map(rule => (
+                                                    <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
+                                                ))
+                                            ) : (
+                                                <span style={styles.noRuleText}>-- No Rule --</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </td>
+                                <td style={styles.td}>
+                                     <div style={styles.ruleCellContainer}>
+                                        <button onClick={() => onEditRules(campaign.campaignId, 'BUDGET_ACCELERATION')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
+                                        <div style={styles.ruleTagContainer}>
+                                            {currentBudgetRules.length > 0 ? (
+                                                currentBudgetRules.map(rule => (
                                                     <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
                                                 ))
                                             ) : (
