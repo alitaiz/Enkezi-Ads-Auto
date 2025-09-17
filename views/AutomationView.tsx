@@ -199,7 +199,26 @@ export function AutomationView() {
         alert("Please select a profile on the PPC Management page first.");
         return;
     }
-    const payload = { ...data, profile_id: profileId };
+
+    let payload;
+    // For POST (creating a new rule), we send the full object including the
+    // initial (usually empty) scope.
+    if (method === 'POST') {
+        payload = { ...data, profile_id: profileId };
+    } else {
+        // For PUT (updating an existing rule), we ONLY send the fields that can be
+        // edited from the Automation view's modal. This is critical to prevent
+        // overwriting the `scope` property, which is managed exclusively from
+        // the PPC Management view.
+        payload = {
+            name: data.name,
+            config: data.config,
+            is_active: data.is_active,
+            // `scope` is intentionally omitted.
+            // `profile_id` and `rule_type` are also omitted as they are immutable.
+        };
+    }
+
 
     await fetch(url, {
       method,

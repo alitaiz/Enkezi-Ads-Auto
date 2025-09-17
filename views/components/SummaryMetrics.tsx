@@ -44,12 +44,13 @@ export function SummaryMetrics({ metrics, loading }: SummaryMetricsProps) {
 
   const formatPercent = (value: number) => `${(value * 100).toFixed(2)}%`;
   const formatRoAS = (value: number) => `${value.toFixed(2)}x`;
+  const tooltipText = "Provisional, real-time spend from Amazon Stream, used for automations. This value may differ from your finalized daily spend after Amazon processes adjustments for invalid clicks.";
 
   return (
     <div style={styles.container}>
-      <div style={styles.metricCard}>
+      <div style={styles.metricCard} title={tooltipText}>
         <p style={styles.metricValue}>{formatPrice(metrics.spend)}</p>
-        <p style={styles.metricLabel}>Spend</p>
+        <p style={styles.metricLabel}>Temp Spend</p>
       </div>
       <div style={styles.metricCard}>
         <p style={styles.metricValue}>{formatPrice(metrics.sales)}</p>

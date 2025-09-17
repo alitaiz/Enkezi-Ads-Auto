@@ -149,6 +149,7 @@ export const evaluateBidAdjustmentRule = async (rule, performanceData, throttled
         
         for (const group of rule.config.conditionGroups) {
             let allConditionsMet = true;
+            const evaluatedMetrics = [];
             for (const condition of group.conditions) {
                 const metrics = calculateMetricsForWindow(entity.dailyData, condition.timeWindow, referenceDate);
                 const metricValue = metrics[condition.metric];
@@ -157,6 +158,13 @@ export const evaluateBidAdjustmentRule = async (rule, performanceData, throttled
                 if (condition.metric === 'acos') {
                     conditionValue = condition.value / 100;
                 }
+                
+                evaluatedMetrics.push({
+                    metric: condition.metric,
+                    timeWindow: condition.timeWindow,
+                    value: metricValue,
+                    condition: `${condition.operator} ${condition.value}`
+                });
 
                 if (!checkCondition(metricValue, condition.operator, conditionValue)) {
                     allConditionsMet = false;
@@ -187,15 +195,10 @@ export const evaluateBidAdjustmentRule = async (rule, performanceData, throttled
                         if (!actionsByCampaign[campaignId]) {
                             actionsByCampaign[campaignId] = { changes: [], newNegatives: [] };
                         }
-
-                        const triggeringMetrics = group.conditions.map(c => {
-                            const metrics = calculateMetricsForWindow(entity.dailyData, c.timeWindow, referenceDate);
-                            return { metric: c.metric, timeWindow: c.timeWindow, value: metrics[c.metric], condition: `${c.operator} ${c.value}` };
-                        });
                         
                         actionsByCampaign[campaignId].changes.push({
                            entityType: entity.entityType, entityId: entity.entityId, entityText: entity.entityText,
-                           oldBid: entity.currentBid, newBid: newBid, triggeringMetrics
+                           oldBid: entity.currentBid, newBid: newBid, triggeringMetrics: evaluatedMetrics
                         });
 
                          const updatePayload = {
@@ -258,6 +261,7 @@ export const evaluateSearchTermAutomationRule = async (rule, performanceData, th
 
         for (const group of rule.config.conditionGroups) {
             let allConditionsMet = true;
+            const evaluatedMetrics = [];
             for (const condition of group.conditions) {
                 const metrics = calculateMetricsForWindow(entity.dailyData, condition.timeWindow, referenceDate);
                 const metricValue = metrics[condition.metric];
@@ -266,6 +270,13 @@ export const evaluateSearchTermAutomationRule = async (rule, performanceData, th
                 if (condition.metric === 'acos') {
                     conditionValue = condition.value / 100;
                 }
+                
+                 evaluatedMetrics.push({
+                    metric: condition.metric,
+                    timeWindow: condition.timeWindow,
+                    value: metricValue,
+                    condition: `${condition.operator} ${condition.value}`
+                });
 
                 if (!checkCondition(metricValue, condition.operator, conditionValue)) {
                     allConditionsMet = false;
@@ -284,17 +295,12 @@ export const evaluateSearchTermAutomationRule = async (rule, performanceData, th
                         actionsByCampaign[campaignId] = { changes: [], newNegatives: [] };
                     }
 
-                    const triggeringMetrics = group.conditions.map(c => {
-                        const metrics = calculateMetricsForWindow(entity.dailyData, c.timeWindow, referenceDate);
-                        return { metric: c.metric, timeWindow: c.timeWindow, value: metrics[c.metric], condition: `${c.operator} ${c.value}` };
-                    });
-
                     actionsByCampaign[campaignId].newNegatives.push({
                         searchTerm: searchTerm,
                         campaignId,
                         adGroupId: entity.adGroupId,
                         matchType: isAsin ? 'NEGATIVE_PRODUCT_TARGET' : matchType,
-                        triggeringMetrics
+                        triggeringMetrics: evaluatedMetrics
                     });
 
                     if (isAsin) {
@@ -374,7 +380,7 @@ export const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
 
         for (const group of rule.config.conditionGroups) {
             let allConditionsMet = true;
-            const triggeringMetrics = [];
+            const evaluatedMetrics = [];
 
             for (const condition of group.conditions) {
                 const metrics = calculateMetricsForWindow(campaignPerf.dailyData, 'TODAY', referenceDate);
@@ -396,14 +402,14 @@ export const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                     conditionValue = condition.value / 100;
                 }
                 
-                if (checkCondition(metricValue, condition.operator, conditionValue)) {
-                    triggeringMetrics.push({
-                        metric: condition.metric,
-                        timeWindow: 'TODAY',
-                        value: metricValue,
-                        condition: `${condition.operator} ${condition.value}`
-                    });
-                } else {
+                evaluatedMetrics.push({
+                    metric: condition.metric,
+                    timeWindow: 'TODAY',
+                    value: metricValue,
+                    condition: `${condition.operator} ${condition.value}`
+                });
+                
+                if (!checkCondition(metricValue, condition.operator, conditionValue)) {
                     allConditionsMet = false;
                     break;
                 }
@@ -438,7 +444,7 @@ export const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                     actionsByCampaign[campaignPerf.campaignId].changes.push({
                         entityType: 'campaign', entityId: campaignPerf.campaignId,
                         oldBudget: currentBudget, newBudget,
-                        triggeringMetrics
+                        triggeringMetrics: evaluatedMetrics
                     });
                 }
                 break;
