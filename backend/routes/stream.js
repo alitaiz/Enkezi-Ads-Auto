@@ -151,13 +151,12 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                     (event_data->>'campaign_id') as campaign_id_text,
                     COALESCE(SUM((event_data->>'impressions')::bigint), 0) as impressions,
                     COALESCE(SUM((event_data->>'clicks')::bigint), 0) as clicks,
-                    -- Adjusted Spend: Sum of all costs (positive and negative)
+                    -- Adjusted Spend: Sum of all costs (positive and negative adjustments)
                     COALESCE(SUM((event_data->>'cost')::numeric), 0.00) as spend,
-                    -- Gross Spend: Sum of ONLY positive costs, using GREATEST for robustness.
-                    COALESCE(SUM(GREATEST(0, (event_data->>'cost')::numeric)), 0.00) as temp_spend
+                    -- Gross Spend: Sum of ONLY positive costs to show pre-adjustment spend
+                    COALESCE(SUM(CASE WHEN (event_data->>'cost')::numeric > 0 THEN (event_data->>'cost')::numeric ELSE 0 END), 0.00) as temp_spend
                 FROM raw_stream_events
                 WHERE event_type = 'sp-traffic'
-                  AND (event_data->>'cost') IS NOT NULL
                   AND (event_data->>'time_window_start')::timestamptz >= (($1)::timestamp AT TIME ZONE '${reportingTimezone}') 
                   AND (event_data->>'time_window_start')::timestamptz < ((($2)::date + interval '1 day')::timestamp AT TIME ZONE '${reportingTimezone}')
                 GROUP BY 1
@@ -196,7 +195,7 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                     return null;
                 }
                 return {
-                    campaignId: campaignIdStr, // CRITICAL FIX: Return ID as a string to prevent precision loss.
+                    campaignId: Number(campaignIdStr),
                     impressions: parseInt(row.impressions || '0', 10),
                     clicks: parseInt(row.clicks || '0', 10),
                     spend: parseFloat(row.spend || '0'),
