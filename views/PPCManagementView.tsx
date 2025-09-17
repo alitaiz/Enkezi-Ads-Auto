@@ -211,7 +211,7 @@ export function PPCManagementView() {
     const [currentPage, setCurrentPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     const [excludeTerm, setExcludeTerm] = useState('');
-    const [sortConfig, setSortConfig] = useState<{ key: keyof CampaignWithMetrics; direction: 'ascending' | 'descending' } | null>({ key: 'spend', direction: 'descending' });
+    const [sortConfig, setSortConfig] = useState<{ key: keyof CampaignWithMetrics; direction: 'ascending' | 'descending' } | null>({ key: 'adjustedSpend', direction: 'descending' });
     const [statusFilter, setStatusFilter] = useState<CampaignState | 'all'>('enabled');
     
     // FIX: Changed state types from string to number for campaign IDs.
@@ -451,25 +451,25 @@ export function PPCManagementView() {
                 campaignId: campaign.campaignId,
                 impressions: 0,
                 clicks: 0,
-                spend: 0,
-                tempSpend: 0,
+                adjustedSpend: 0,
+                grossSpend: 0,
                 orders: 0,
                 sales: 0,
             };
 
-            const { impressions, clicks, spend, sales, orders, tempSpend } = metrics;
+            const { impressions, clicks, adjustedSpend, grossSpend, sales, orders } = metrics;
             
             return {
                 ...campaign,
                 impressions,
                 clicks,
-                spend,
-                tempSpend,
+                adjustedSpend,
+                grossSpend,
                 orders,
                 sales,
-                acos: sales > 0 ? spend / sales : 0,
-                roas: spend > 0 ? sales / spend : 0,
-                cpc: clicks > 0 ? spend / clicks : 0,
+                acos: sales > 0 ? adjustedSpend / sales : 0,
+                roas: adjustedSpend > 0 ? sales / adjustedSpend : 0,
+                cpc: clicks > 0 ? adjustedSpend / clicks : 0,
                 ctr: impressions > 0 ? clicks / impressions : 0,
             };
         });
@@ -500,20 +500,20 @@ export function PPCManagementView() {
         if (loading.data) return null;
         
         const total = filteredData.reduce((acc, campaign) => {
-            acc.spend += campaign.spend || 0;
-            acc.tempSpend += campaign.tempSpend || 0;
+            acc.adjustedSpend += campaign.adjustedSpend || 0;
+            acc.grossSpend += campaign.grossSpend || 0;
             acc.sales += campaign.sales || 0;
             acc.orders += campaign.orders || 0;
             acc.clicks += campaign.clicks || 0;
             acc.impressions += campaign.impressions || 0;
             return acc;
-        }, { spend: 0, tempSpend: 0, sales: 0, orders: 0, clicks: 0, impressions: 0 });
+        }, { adjustedSpend: 0, grossSpend: 0, sales: 0, orders: 0, clicks: 0, impressions: 0 });
 
         return {
             ...total,
-            acos: total.sales > 0 ? total.spend / total.sales : 0,
-            roas: total.spend > 0 ? total.sales / total.spend : 0,
-            cpc: total.clicks > 0 ? total.spend / total.clicks : 0,
+            acos: total.sales > 0 ? total.adjustedSpend / total.sales : 0,
+            roas: total.adjustedSpend > 0 ? total.sales / total.adjustedSpend : 0,
+            cpc: total.clicks > 0 ? total.adjustedSpend / total.clicks : 0,
             ctr: total.impressions > 0 ? total.clicks / total.impressions : 0,
         };
     }, [filteredData, loading.data]);

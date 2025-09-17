@@ -152,9 +152,9 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                     COALESCE(SUM((event_data->>'impressions')::bigint), 0) as impressions,
                     COALESCE(SUM((event_data->>'clicks')::bigint), 0) as clicks,
                     -- Adjusted Spend: Sum of all costs (positive and negative adjustments)
-                    COALESCE(SUM((event_data->>'cost')::numeric), 0.00) as spend,
-                    -- Gross Spend: Sum of ONLY positive costs, using FILTER clause for robustness.
-                    COALESCE(SUM((event_data->>'cost')::numeric) FILTER (WHERE (event_data->>'cost')::numeric > 0), 0.00) as temp_spend
+                    COALESCE(SUM((event_data->>'cost')::numeric), 0.00) as adjusted_spend,
+                    -- Gross Spend: Sum of ONLY positive costs
+                    COALESCE(SUM((event_data->>'cost')::numeric) FILTER (WHERE (event_data->>'cost')::numeric > 0), 0.00) as gross_spend
                 FROM raw_stream_events
                 WHERE event_type = 'sp-traffic'
                   AND (event_data->>'time_window_start')::timestamptz >= (($1)::timestamp AT TIME ZONE '${reportingTimezone}') 
@@ -176,8 +176,8 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                 COALESCE(t.campaign_id_text, c.campaign_id_text) as "campaignId",
                 COALESCE(t.impressions, 0) as impressions,
                 COALESCE(t.clicks, 0) as clicks,
-                COALESCE(t.spend, 0.00)::float as spend,
-                COALESCE(t.temp_spend, 0.00)::float as "tempSpend",
+                COALESCE(t.adjusted_spend, 0.00)::float as "adjustedSpend",
+                COALESCE(t.gross_spend, 0.00)::float as "grossSpend",
                 COALESCE(c.orders, 0) as orders,
                 COALESCE(c.sales, 0.00)::float as sales
             FROM traffic_data t
@@ -198,8 +198,8 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                     campaignId: Number(campaignIdStr),
                     impressions: parseInt(row.impressions || '0', 10),
                     clicks: parseInt(row.clicks || '0', 10),
-                    spend: parseFloat(row.spend || '0'),
-                    tempSpend: parseFloat(row.tempSpend || '0'),
+                    adjustedSpend: parseFloat(row.adjustedSpend || '0'),
+                    grossSpend: parseFloat(row.grossSpend || '0'),
                     orders: parseInt(row.orders || '0', 10),
                     sales: parseFloat(row.sales || '0'),
                 };
