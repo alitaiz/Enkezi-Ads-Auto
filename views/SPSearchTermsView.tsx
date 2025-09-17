@@ -59,6 +59,34 @@ const styles: { [key: string]: React.CSSProperties } = {
         background: 'white',
         cursor: 'pointer',
     },
+    integrityCheckContainer: {
+        marginTop: '20px',
+        padding: '15px',
+        backgroundColor: '#fffbe6',
+        border: '1px solid #ffe58f',
+        borderRadius: 'var(--border-radius)',
+        marginBottom: '20px',
+    },
+    integrityTitle: {
+        margin: '0 0 10px 0',
+        fontWeight: 600,
+        color: '#d46b08',
+    },
+    missingDateItem: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '8px',
+        borderBottom: '1px solid #ffe58f',
+    },
+    fetchButton: {
+        padding: '6px 12px',
+        border: '1px solid #d46b08',
+        borderRadius: '4px',
+        backgroundColor: 'white',
+        color: '#d46b08',
+        cursor: 'pointer',
+    },
 };
 
 // --- Column Definitions ---
@@ -354,15 +382,7 @@ const TreeNodeRow: React.FC<{
 export function SPSearchTermsView() {
     const { cache, setCache } = useContext(DataCacheContext);
     const [flatData, setFlatData] = useState<SPSearchTermReportData[]>(cache.spSearchTerms.data || []);
-    // Derive the tree structure from flat data instead of storing it in state
-    // to avoid expensive recalculations on every render. Using useMemo ensures
-    // the heavy transformation only runs when the underlying data or view level
-    // changes, which prevents UI freezes when switching tabs.
     const [viewLevel, setViewLevel] = useState<ViewLevel>('campaigns');
-    // Pre-calculate hierarchies for each view level only when the raw data
-    // changes. Switching between tabs then becomes an inexpensive lookup
-    // rather than repeatedly rebuilding large trees which previously caused
-    // the UI to freeze after visiting the "Keywords" tab.
     const campaignsTree = useMemo(() => buildHierarchyByLevel(flatData, 'campaigns'), [flatData]);
     const adGroupsTree = useMemo(() => buildHierarchyByLevel(flatData, 'adGroups'), [flatData]);
     const keywordsTree = useMemo(() => buildHierarchyByLevel(flatData, 'keywords'), [flatData]);
@@ -385,11 +405,13 @@ export function SPSearchTermsView() {
     const [error, setError] = useState<string | null>(null);
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    
+    const [missingDates, setMissingDates] = useState<string[]>([]);
+    const [fetchStatus, setFetchStatus] = useState<Record<string, 'fetching' | 'success' | 'error' | 'idle'>>({});
 
     const [dateRange, setDateRange] = useState(cache.spSearchTerms.filters ? { start: new Date(cache.spSearchTerms.filters.startDate), end: new Date(cache.spSearchTerms.filters.endDate)} : { start: new Date(), end: new Date() });
     const [isDatePickerOpen, setDatePickerOpen] = useState(false);
 
-    // Reset expanded/selected state whenever the view or data changes
     useEffect(() => {
         setExpandedIds(new Set());
         setSelectedIds(new Set());
@@ -407,18 +429,34 @@ export function SPSearchTermsView() {
         setSelectedIds(allIds);
     };
     
-    // Format a Date object as YYYY-MM-DD using local time to avoid
-    // timezone-related off-by-one errors when converting to ISO strings.
     const formatDateForQuery = (d: Date) => {
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
         const day = String(d.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     };
+    
+    const checkForMissingDates = async (startDate: string, endDate: string) => {
+        try {
+            const response = await fetch('/api/database/check-missing-dates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source: 'searchTermReport', startDate, endDate }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setMissingDates(data.missingDates || []);
+                setFetchStatus({});
+            }
+        } catch (err) {
+            console.error("Failed to check for missing dates:", err);
+        }
+    };
 
     const handleApply = useCallback(async (range: {start: Date, end: Date}) => {
         setLoading(true);
         setError(null);
+        setMissingDates([]);
         const startDate = formatDateForQuery(range.start);
         const endDate = formatDateForQuery(range.end);
 
@@ -429,6 +467,7 @@ export function SPSearchTermsView() {
             const data: SPSearchTermReportData[] = await response.json();
             setFlatData(data);
             setCache(prev => ({ ...prev, spSearchTerms: { data, filters: { asin: '', startDate, endDate } } }));
+            await checkForMissingDates(startDate, endDate);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'An unknown error occurred.');
             setFlatData([]);
@@ -438,13 +477,6 @@ export function SPSearchTermsView() {
     }, [setCache]);
     
     useEffect(() => {
-        // Only load the default 7-day range on initial mount when no filters
-        // have been applied. Previously this effect depended solely on the
-        // cached data length which caused it to re-fetch the default range
-        // whenever a user selected a date range that returned no results. That
-        // behaviour overwrote the empty state with aggregated data from all
-        // days. By also checking for the absence of cached filters we ensure the
-        // default fetch happens only once on first load.
         if (cache.spSearchTerms.data.length === 0 && !cache.spSearchTerms.filters) {
             const end = new Date();
             const start = new Date();
@@ -457,6 +489,40 @@ export function SPSearchTermsView() {
         setDateRange(newRange);
         setDatePickerOpen(false);
         handleApply(newRange);
+    };
+    
+    const handleFetchMissingDay = async (date: string) => {
+        setFetchStatus(prev => ({ ...prev, [date]: 'fetching' }));
+        try {
+            const response = await fetch('/api/database/fetch-missing-day', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source: 'searchTermReport', date }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error);
+            setFetchStatus(prev => ({ ...prev, [date]: 'success' }));
+            // Refresh data after successful fetch
+            handleApply(dateRange);
+        } catch (err) {
+            setFetchStatus(prev => ({ ...prev, [date]: 'error' }));
+            alert(`Failed to fetch data for ${date}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+    };
+    
+    const renderFetchButton = (date: string) => {
+        const status = fetchStatus[date] || 'idle';
+        let text = 'Fetch';
+        let disabled = false;
+
+        switch (status) {
+            case 'fetching': text = 'Fetching...'; disabled = true; break;
+            case 'success': text = 'Success!'; disabled = true; break;
+            case 'error': text = 'Error - Retry'; disabled = false; break;
+            default: text = 'Fetch'; disabled = false; break;
+        }
+
+        return <button style={styles.fetchButton} onClick={() => handleFetchMissingDay(date)} disabled={disabled}>{text}</button>;
     };
 
     const formatDateRangeDisplay = (start: Date, end: Date) => {
@@ -491,6 +557,19 @@ export function SPSearchTermsView() {
                      ))}
                  </div>
             </header>
+            
+            {missingDates.length > 0 && (
+                <div style={styles.integrityCheckContainer}>
+                    <h3 style={styles.integrityTitle}>⚠️ Data Integrity Check</h3>
+                    <p>The following dates have missing report data in the selected range. You can fetch them individually.</p>
+                    {missingDates.map(date => (
+                        <div key={date} style={styles.missingDateItem}>
+                            <span>Missing data for: <strong>{date}</strong></span>
+                            {renderFetchButton(date)}
+                        </div>
+                    ))}
+                </div>
+            )}
             
             <div style={styles.actionsBar}>
                 <button style={styles.actionButton}><span>✎</span> Edit</button>
