@@ -728,6 +728,8 @@ const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
 
         for (const group of rule.config.conditionGroups) {
             let allConditionsMet = true;
+            const triggeringMetrics = [];
+
             for (const condition of group.conditions) {
                 const metrics = calculateMetricsForWindow(campaignPerf.dailyData, 'TODAY', referenceDate);
                 
@@ -737,9 +739,23 @@ const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                 } else {
                     metricValue = metrics[condition.metric];
                 }
-                
-                if (!checkCondition(metricValue, condition.operator, condition.value)) {
+
+                if ((condition.metric === 'acos' || condition.metric === 'roas') && metrics.sales === 0) {
                     allConditionsMet = false;
+                    triggeringMetrics.length = 0; // Clear array as group failed
+                    break;
+                }
+                
+                if (checkCondition(metricValue, condition.operator, condition.value)) {
+                    triggeringMetrics.push({
+                        metric: condition.metric,
+                        timeWindow: 'TODAY',
+                        value: metricValue,
+                        condition: `${condition.operator} ${condition.value}`
+                    });
+                } else {
+                    allConditionsMet = false;
+                    triggeringMetrics.length = 0; // Clear array as group failed
                     break;
                 }
             }
@@ -755,9 +771,6 @@ const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                 newBudget = parseFloat(newBudget.toFixed(2));
 
                 if (newBudget > currentBudget) {
-                    // Atomically insert the original budget on the FIRST increase of the day.
-                    // Subsequent attempts will be ignored due to the unique constraint,
-                    // preserving the true original budget.
                     await pool.query(
                         `INSERT INTO daily_budget_overrides (campaign_id, original_budget, override_date) 
                          VALUES ($1, $2, $3) 
@@ -770,10 +783,13 @@ const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                         budget: { budget: newBudget, budgetType: 'DAILY' }
                     });
 
-                    if (!actionsByCampaign[campaignPerf.campaignId]) actionsByCampaign[campaignPerf.campaignId] = { changes: [] };
+                    if (!actionsByCampaign[campaignPerf.campaignId]) {
+                        actionsByCampaign[campaignPerf.campaignId] = { changes: [], newNegatives: [] };
+                    }
                     actionsByCampaign[campaignPerf.campaignId].changes.push({
                         entityType: 'campaign', entityId: campaignPerf.campaignId,
-                        oldBudget: currentBudget, newBudget
+                        oldBudget: currentBudget, newBudget,
+                        triggeringMetrics // Add the collected metrics
                     });
                 }
                 break; // First match wins

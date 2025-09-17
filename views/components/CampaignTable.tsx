@@ -324,13 +324,17 @@ export function CampaignTable({
 
     const formatMetricValue = (value: number, metric: TriggeringMetric['metric']) => {
         switch (metric) {
-            case 'acos': 
-            case 'roas':
+            case 'acos':
+                return formatPercent(value); // Expects a ratio e.g. 0.35 -> 35.00%
             case 'budgetUtilization':
-                return formatPercent(value);
+                return `${Number(value).toFixed(2)}%`; // Expects a number e.g. 80 -> 80.00%
+            case 'roas':
+                return value.toFixed(2); // Expects a ratio e.g. 2.5 -> 2.50
             case 'spend':
-            case 'sales': return formatPrice(value);
-            default: return formatNumber(value);
+            case 'sales':
+                return formatPrice(value);
+            default:
+                return formatNumber(value);
         }
     };
 
@@ -348,6 +352,9 @@ export function CampaignTable({
         return (
             <ul style={styles.detailsList}>
                 {changes.map((change, index) => {
+                    const timeWindowText = (metric: TriggeringMetric) => 
+                        metric.timeWindow === 'TODAY' ? 'Today' : `${metric.timeWindow} days`;
+
                     // BUDGET ACCELERATION LOG
                     if (typeof change.oldBudget !== 'undefined' && typeof change.newBudget !== 'undefined') {
                         return (
@@ -357,7 +364,7 @@ export function CampaignTable({
                                     <ul style={styles.metricList}>
                                         {change.triggeringMetrics.map((metric, mIndex) => (
                                             <li key={mIndex} style={styles.metricListItem}>
-                                                {metric.metric} ({metric.timeWindow}) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
+                                                {metric.metric} ({timeWindowText(metric)}) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
                                             </li>
                                         ))}
                                     </ul>
@@ -374,7 +381,7 @@ export function CampaignTable({
                                     <ul style={styles.metricList}>
                                         {change.triggeringMetrics.map((metric, mIndex) => (
                                             <li key={mIndex} style={styles.metricListItem}>
-                                                {metric.metric} ({metric.timeWindow} days) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
+                                                {metric.metric} ({timeWindowText(metric)}) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
                                             </li>
                                         ))}
                                     </ul>
