@@ -151,7 +151,8 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                     (event_data->>'campaign_id') as campaign_id_text,
                     COALESCE(SUM((event_data->>'impressions')::bigint), 0) as impressions,
                     COALESCE(SUM((event_data->>'clicks')::bigint), 0) as clicks,
-                    COALESCE(SUM((event_data->>'cost')::numeric), 0.00) as spend
+                    COALESCE(SUM((event_data->>'cost')::numeric), 0.00) as spend,
+                    COALESCE(SUM((event_data->>'cost')::numeric) FILTER (WHERE (event_data->>'cost')::numeric > 0), 0.00) as temp_spend
                 FROM raw_stream_events
                 WHERE event_type = 'sp-traffic' 
                   AND (event_data->>'time_window_start')::timestamptz >= (($1)::timestamp AT TIME ZONE '${reportingTimezone}') 
@@ -174,6 +175,7 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                 COALESCE(t.impressions, 0) as impressions,
                 COALESCE(t.clicks, 0) as clicks,
                 COALESCE(t.spend, 0.00)::float as spend,
+                COALESCE(t.temp_spend, 0.00)::float as "tempSpend",
                 COALESCE(c.orders, 0) as orders,
                 COALESCE(c.sales, 0.00)::float as sales
             FROM traffic_data t
@@ -195,6 +197,7 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                     impressions: parseInt(row.impressions || '0', 10),
                     clicks: parseInt(row.clicks || '0', 10),
                     spend: parseFloat(row.spend || '0'),
+                    tempSpend: parseFloat(row.tempSpend || '0'),
                     orders: parseInt(row.orders || '0', 10),
                     sales: parseFloat(row.sales || '0'),
                 };

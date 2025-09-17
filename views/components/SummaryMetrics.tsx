@@ -26,6 +26,11 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: '0.9rem',
     color: '#666',
     margin: 0,
+  },
+  secondaryMetricValue: {
+      fontSize: '0.9rem',
+      color: '#666',
+      margin: '5px 0 0 0',
   }
 };
 
@@ -44,13 +49,13 @@ export function SummaryMetrics({ metrics, loading }: SummaryMetricsProps) {
 
   const formatPercent = (value: number) => `${(value * 100).toFixed(2)}%`;
   const formatRoAS = (value: number) => `${value.toFixed(2)}x`;
-  const tooltipText = "Provisional, real-time spend from Amazon Stream, used for automations. This value may differ from your finalized daily spend after Amazon processes adjustments for invalid clicks.";
 
   return (
     <div style={styles.container}>
-      <div style={styles.metricCard} title={tooltipText}>
+      <div style={styles.metricCard}>
         <p style={styles.metricValue}>{formatPrice(metrics.spend)}</p>
-        <p style={styles.metricLabel}>Temp Spend</p>
+        <p style={styles.metricLabel}>Adjusted Spend</p>
+        <p style={styles.secondaryMetricValue}>({formatPrice(metrics.tempSpend)} Gross)</p>
       </div>
       <div style={styles.metricCard}>
         <p style={styles.metricValue}>{formatPrice(metrics.sales)}</p>

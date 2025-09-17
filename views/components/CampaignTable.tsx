@@ -89,7 +89,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     },
     detailsList: {
         margin: 0,
-        padding: 0,
+        paddingLeft: '20px',
+        fontSize: '0.85rem',
         listStyleType: 'none',
     },
     metricList: {
@@ -161,6 +162,7 @@ const resizerStyles: { [key: string]: React.CSSProperties } = {
 
 function useResizableColumns(initialWidths: number[]) {
     const [widths, setWidths] = useState(initialWidths);
+    // FIX: Add state to track which column is being resized, so the component can re-render to apply styles.
     const [resizingColumnIndex, setResizingColumnIndex] = useState<number | null>(null);
     const currentColumnIndex = useRef<number | null>(null);
     const startX = useRef(0);
@@ -279,7 +281,8 @@ export function CampaignTable({
         { id: 'name', label: 'Campaign Name', isSortable: true },
         { id: 'state', label: 'Status', isSortable: true },
         { id: 'dailyBudget', label: 'Daily Budget', isSortable: true },
-        { id: 'spend', label: 'Temp Spend', isSortable: true },
+        { id: 'tempSpend', label: 'Gross Spend', isSortable: true },
+        { id: 'spend', label: 'Adjusted Spend', isSortable: true },
         { id: 'sales', label: 'Sales', isSortable: true },
         { id: 'orders', label: 'Orders', isSortable: true },
         { id: 'impressions', label: 'Impressions', isSortable: true },
@@ -292,7 +295,7 @@ export function CampaignTable({
     ], []);
 
     const initialWidths = useMemo(() => [
-        300, 100, 120, 100, 100, 100, 110, 100, 100, 100, 220, 220, 220
+        300, 100, 120, 120, 120, 100, 100, 110, 100, 100, 100, 220, 220, 220
     ], []);
 
     const { widths, getHeaderProps, resizingColumnIndex } = useResizableColumns(initialWidths);
@@ -362,7 +365,7 @@ export function CampaignTable({
                                     <ul style={styles.metricList}>
                                         {change.triggeringMetrics.map((metric, mIndex) => (
                                             <li key={mIndex} style={styles.metricListItem}>
-                                                &#9679; {metric.metric} ({timeWindowText(metric)}) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
+                                                {metric.metric} ({timeWindowText(metric)}) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
                                             </li>
                                         ))}
                                     </ul>
@@ -379,7 +382,7 @@ export function CampaignTable({
                                     <ul style={styles.metricList}>
                                         {change.triggeringMetrics.map((metric, mIndex) => (
                                             <li key={mIndex} style={styles.metricListItem}>
-                                                &#9679; {metric.metric} ({timeWindowText(metric)}) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
+                                                {metric.metric} ({timeWindowText(metric)}) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
                                             </li>
                                         ))}
                                     </ul>
@@ -395,7 +398,7 @@ export function CampaignTable({
                          <ul style={styles.metricList}>
                             {neg.triggeringMetrics.map((metric, mIndex) => (
                                 <li key={mIndex} style={styles.metricListItem}>
-                                    &#9679; {metric.metric} ({metric.timeWindow} days) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
+                                    {metric.metric} ({metric.timeWindow} days) was <strong>{formatMetricValue(metric.value, metric.metric)}</strong> (Condition: {metric.condition})
                                 </li>
                             ))}
                         </ul>
@@ -444,7 +447,7 @@ export function CampaignTable({
         );
     };
     
-    const totalColumns = resizableColumns.length + 2; // +2 for checkbox and expand icon column
+    const totalColumns = resizableColumns.length + 1;
     
     return (
         <div style={styles.tableContainer}>
@@ -473,7 +476,6 @@ export function CampaignTable({
                                     <div
                                         onClick={() => col.isSortable && onRequestSort(col.id as SortableKeys)}
                                         style={{ display: 'flex', alignItems: 'center', cursor: col.isSortable ? 'pointer' : 'default' }}
-                                        title={col.id === 'spend' ? "Provisional, real-time spend from Amazon Stream, used for automations. This value may differ from your finalized daily spend after Amazon processes adjustments for invalid clicks." : undefined}
                                     >
                                         {col.label}
                                         {isSorted && <span style={styles.sortIcon}>{directionIcon}</span>}
@@ -523,6 +525,7 @@ export function CampaignTable({
                                         <input type="number" style={styles.input} value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={() => handleUpdate(campaign.campaignId)} onKeyDown={(e) => handleKeyDown(e, campaign.campaignId)} autoFocus />
                                     ) : formatPrice(campaign.dailyBudget)}
                                 </td>
+                                <td style={styles.td}>{formatPrice(campaign.tempSpend)}</td>
                                 <td style={styles.td}>{formatPrice(campaign.spend)}</td>
                                 <td style={styles.td}>{formatPrice(campaign.sales)}</td>
                                 <td style={styles.td}>{formatNumber(campaign.orders)}</td>

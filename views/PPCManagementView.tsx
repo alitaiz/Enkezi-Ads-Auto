@@ -452,17 +452,19 @@ export function PPCManagementView() {
                 impressions: 0,
                 clicks: 0,
                 spend: 0,
+                tempSpend: 0,
                 orders: 0,
                 sales: 0,
             };
 
-            const { impressions, clicks, spend, sales, orders } = metrics;
+            const { impressions, clicks, spend, sales, orders, tempSpend } = metrics;
             
             return {
                 ...campaign,
                 impressions,
                 clicks,
                 spend,
+                tempSpend,
                 orders,
                 sales,
                 acos: sales > 0 ? spend / sales : 0,
@@ -499,12 +501,13 @@ export function PPCManagementView() {
         
         const total = filteredData.reduce((acc, campaign) => {
             acc.spend += campaign.spend || 0;
+            acc.tempSpend += campaign.tempSpend || 0;
             acc.sales += campaign.sales || 0;
             acc.orders += campaign.orders || 0;
             acc.clicks += campaign.clicks || 0;
             acc.impressions += campaign.impressions || 0;
             return acc;
-        }, { spend: 0, sales: 0, orders: 0, clicks: 0, impressions: 0 });
+        }, { spend: 0, tempSpend: 0, sales: 0, orders: 0, clicks: 0, impressions: 0 });
 
         return {
             ...total,
