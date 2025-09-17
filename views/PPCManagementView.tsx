@@ -520,6 +520,10 @@ export function PPCManagementView() {
                 const maxOk = max === undefined || isNaN(max) || val <= max;
                 return minOk && maxOk;
             };
+            
+            // For ACoS, convert percentage input to a ratio for comparison
+            const acosMin = metricFilters.acos.min !== undefined ? metricFilters.acos.min / 100 : undefined;
+            const acosMax = metricFilters.acos.max !== undefined ? metricFilters.acos.max / 100 : undefined;
 
             return (
                 check(c.adjustedSpend, metricFilters.adjustedSpend.min, metricFilters.adjustedSpend.max) &&
@@ -527,7 +531,7 @@ export function PPCManagementView() {
                 check(c.orders, metricFilters.orders.min, metricFilters.orders.max) &&
                 check(c.impressions, metricFilters.impressions.min, metricFilters.impressions.max) &&
                 check(c.clicks, metricFilters.clicks.min, metricFilters.clicks.max) &&
-                check(c.acos, metricFilters.acos.min ? metricFilters.acos.min / 100 : undefined, metricFilters.acos.max ? metricFilters.acos.max / 100 : undefined) &&
+                check(c.acos, acosMin, acosMax) &&
                 check(c.roas, metricFilters.roas.min, metricFilters.roas.max)
             );
         });
