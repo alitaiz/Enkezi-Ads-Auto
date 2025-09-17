@@ -54,8 +54,7 @@ export function SummaryMetrics({ metrics, loading }: SummaryMetricsProps) {
     <div style={styles.container}>
       <div style={styles.metricCard}>
         <p style={styles.metricValue}>{formatPrice(metrics.adjustedSpend)}</p>
-        <p style={styles.metricLabel}>Adjusted Spend</p>
-        <p style={styles.secondaryMetricValue}>({formatPrice(metrics.grossSpend)} Gross Spend)</p>
+        <p style={styles.metricLabel}>Spend</p>
       </div>
       <div style={styles.metricCard}>
         <p style={styles.metricValue}>{formatPrice(metrics.sales)}</p>

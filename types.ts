@@ -43,7 +43,6 @@ export interface CampaignStreamMetrics {
     impressions: number;
     clicks: number;
     adjustedSpend: number; // Net spend after adjustments
-    grossSpend: number;    // Gross spend before adjustments
     orders: number;
     sales: number;
 }
@@ -53,7 +52,6 @@ export interface CampaignWithMetrics extends Campaign {
     impressions?: number;
     clicks?: number;
     adjustedSpend?: number;
-    grossSpend?: number;
     sales?: number;
     orders?: number;
     acos?: number;
@@ -66,7 +64,6 @@ export interface CampaignWithMetrics extends Campaign {
 export interface SummaryMetricsData {
     clicks: number;
     adjustedSpend: number;
-    grossSpend: number;
     orders: number;
     sales: number;
     acos: number;

@@ -281,8 +281,7 @@ export function CampaignTable({
         { id: 'name', label: 'Campaign Name', isSortable: true },
         { id: 'state', label: 'Status', isSortable: true },
         { id: 'dailyBudget', label: 'Daily Budget', isSortable: true },
-        { id: 'grossSpend', label: 'Gross Spend', isSortable: true },
-        { id: 'adjustedSpend', label: 'Adjusted Spend', isSortable: true },
+        { id: 'adjustedSpend', label: 'Spend', isSortable: true },
         { id: 'sales', label: 'Sales', isSortable: true },
         { id: 'orders', label: 'Orders', isSortable: true },
         { id: 'impressions', label: 'Impressions', isSortable: true },
@@ -295,7 +294,7 @@ export function CampaignTable({
     ], []);
 
     const initialWidths = useMemo(() => [
-        300, 100, 120, 120, 120, 100, 100, 110, 100, 100, 100, 220, 220, 220
+        300, 100, 120, 120, 100, 100, 110, 100, 100, 100, 220, 220, 220
     ], []);
 
     const { widths, getHeaderProps, resizingColumnIndex } = useResizableColumns(initialWidths);
@@ -525,7 +524,6 @@ export function CampaignTable({
                                         <input type="number" style={styles.input} value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={() => handleUpdate(campaign.campaignId)} onKeyDown={(e) => handleKeyDown(e, campaign.campaignId)} autoFocus />
                                     ) : formatPrice(campaign.dailyBudget)}
                                 </td>
-                                <td style={styles.td}>{formatPrice(campaign.grossSpend)}</td>
                                 <td style={styles.td}>{formatPrice(campaign.adjustedSpend)}</td>
                                 <td style={styles.td}>{formatPrice(campaign.sales)}</td>
                                 <td style={styles.td}>{formatNumber(campaign.orders)}</td>
