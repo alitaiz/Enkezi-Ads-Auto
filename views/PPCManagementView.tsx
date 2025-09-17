@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useContext } from 'react';
-import { Profile, Campaign, CampaignWithMetrics, CampaignStreamMetrics, SummaryMetricsData, CampaignState, AdGroup, AutomationRule } from '../types';
+import { Profile, Campaign, CampaignWithMetrics, CampaignStreamMetrics, SummaryMetricsData, CampaignState, AdGroup, AutomationRule, MetricFilters } from '../types';
 import { DateRangePicker } from './components/DateRangePicker';
 import { SummaryMetrics } from './components/SummaryMetrics';
 import { CampaignTable } from './components/CampaignTable';
@@ -213,6 +213,9 @@ export function PPCManagementView() {
     const [excludeTerm, setExcludeTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof CampaignWithMetrics; direction: 'ascending' | 'descending' } | null>({ key: 'adjustedSpend', direction: 'descending' });
     const [statusFilter, setStatusFilter] = useState<CampaignState | 'all'>('enabled');
+    const [metricFilters, setMetricFilters] = useState<MetricFilters>({
+        adjustedSpend: {}, sales: {}, orders: {}, impressions: {}, clicks: {}, acos: {}, roas: {},
+    });
     
     // FIX: Changed state types from string to number for campaign IDs.
     const [expandedCampaignId, setExpandedCampaignId] = useState<number | null>(null);
@@ -472,6 +475,24 @@ export function PPCManagementView() {
             };
         });
     }, [campaigns, performanceMetrics]);
+
+    const handleMetricFilterChange = (
+        key: keyof MetricFilters,
+        type: 'min' | 'max',
+        value: string
+    ) => {
+        const numValue = value === '' ? undefined : parseFloat(value);
+        if (value !== '' && isNaN(numValue)) return; // Ignore invalid input
+
+        setMetricFilters(prev => ({
+            ...prev,
+            [key]: {
+                ...prev[key],
+                [type]: numValue,
+            }
+        }));
+        setCurrentPage(1); // Reset to first page on filter change
+    };
     
     const filteredData = useMemo(() => {
         let data = combinedCampaignData;
@@ -491,8 +512,28 @@ export function PPCManagementView() {
                 });
             }
         }
+        
+        data = data.filter(c => {
+            const check = (value: number | undefined, min?: number, max?: number) => {
+                const val = value ?? 0;
+                const minOk = min === undefined || isNaN(min) || val >= min;
+                const maxOk = max === undefined || isNaN(max) || val <= max;
+                return minOk && maxOk;
+            };
+
+            return (
+                check(c.adjustedSpend, metricFilters.adjustedSpend.min, metricFilters.adjustedSpend.max) &&
+                check(c.sales, metricFilters.sales.min, metricFilters.sales.max) &&
+                check(c.orders, metricFilters.orders.min, metricFilters.orders.max) &&
+                check(c.impressions, metricFilters.impressions.min, metricFilters.impressions.max) &&
+                check(c.clicks, metricFilters.clicks.min, metricFilters.clicks.max) &&
+                check(c.acos, metricFilters.acos.min ? metricFilters.acos.min / 100 : undefined, metricFilters.acos.max ? metricFilters.acos.max / 100 : undefined) &&
+                check(c.roas, metricFilters.roas.min, metricFilters.roas.max)
+            );
+        });
+
         return data;
-    }, [combinedCampaignData, statusFilter, searchTerm, excludeTerm]);
+    }, [combinedCampaignData, statusFilter, searchTerm, excludeTerm, metricFilters]);
 
     const summaryMetrics: SummaryMetricsData | null = useMemo(() => {
         if (loading.data) return null;
@@ -758,6 +799,8 @@ export function PPCManagementView() {
                         onSelectCampaign={handleSelectCampaign}
                         onSelectAll={handleSelectAllCampaigns}
                         isAllSelected={isAllSelected}
+                        metricFilters={metricFilters}
+                        onMetricFilterChange={handleMetricFilterChange}
                     />
                     <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
                 </>

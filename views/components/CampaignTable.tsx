@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { CampaignWithMetrics, CampaignState, AutomationRule } from '../../types';
+import { CampaignWithMetrics, CampaignState, AutomationRule, MetricFilters } from '../../types';
 import { formatPrice, formatNumber, formatPercent } from '../../utils';
 
 const styles: { [key: string]: React.CSSProperties } = {
@@ -137,7 +137,24 @@ const styles: { [key: string]: React.CSSProperties } = {
         padding: 0,
         fontSize: '1rem',
         flexShrink: 0,
-    }
+    },
+    thFilter: {
+        padding: '4px 8px',
+        borderBottom: '2px solid var(--border-color)',
+        backgroundColor: '#f8f9fa',
+    },
+    filterContainer: {
+        display: 'flex',
+        gap: '4px',
+    },
+    filterInput: {
+        width: 'calc(50% - 4px)',
+        padding: '4px',
+        fontSize: '0.8rem',
+        border: '1px solid #ccc',
+        borderRadius: '3px',
+        backgroundColor: 'white',
+    },
 };
 
 type SortableKeys = keyof CampaignWithMetrics;
@@ -262,13 +279,16 @@ interface CampaignTableProps {
     onSelectCampaign: (campaignId: number, isSelected: boolean) => void;
     onSelectAll: (isSelected: boolean) => void;
     isAllSelected: boolean;
+    metricFilters: MetricFilters;
+    onMetricFilterChange: (key: keyof MetricFilters, type: 'min' | 'max', value: string) => void;
 }
 
 export function CampaignTable({
     campaigns, onUpdateCampaign, onEditRules, sortConfig, onRequestSort,
     expandedCampaignId, onToggleExpand, automationLogs, loadingLogs, logsError,
     automationRules,
-    selectedCampaignIds, onSelectCampaign, onSelectAll, isAllSelected
+    selectedCampaignIds, onSelectCampaign, onSelectAll, isAllSelected,
+    metricFilters, onMetricFilterChange
 }: CampaignTableProps) {
     const [editingCell, setEditingCell] = useState<{ id: number; field: 'state' | 'budget' } | null>(null);
     const [tempValue, setTempValue] = useState<string | number>('');
@@ -447,6 +467,29 @@ export function CampaignTable({
     };
     
     const totalColumns = resizableColumns.length + 1;
+
+    const FilterInputs = ({ filterKey, values, onChange, isPercentage = false }: { filterKey: any, values: any, onChange: any, isPercentage?: boolean }) => (
+      <div style={styles.filterContainer}>
+        <input
+          type="number"
+          placeholder="Min"
+          style={styles.filterInput}
+          value={values?.min ?? ''}
+          onChange={(e) => onChange(filterKey, 'min', e.target.value)}
+          onClick={e => e.stopPropagation()} // Prevent sorting when clicking input
+          title={`Filter by minimum ${filterKey}${isPercentage ? ' (%)' : ''}`}
+        />
+        <input
+          type="number"
+          placeholder="Max"
+          style={styles.filterInput}
+          value={values?.max ?? ''}
+          onChange={(e) => onChange(filterKey, 'max', e.target.value)}
+          onClick={e => e.stopPropagation()}
+          title={`Filter by maximum ${filterKey}${isPercentage ? ' (%)' : ''}`}
+        />
+      </div>
+    );
     
     return (
         <div style={styles.tableContainer}>
@@ -485,6 +528,25 @@ export function CampaignTable({
                                     />
                                 </th>
                             )
+                        })}
+                    </tr>
+                    <tr>
+                        <th style={styles.thFilter}></th>
+                        {resizableColumns.map((col) => {
+                            const filterableKeys: Array<keyof MetricFilters> = ['adjustedSpend', 'sales', 'orders', 'impressions', 'clicks', 'acos', 'roas'];
+                            if (filterableKeys.includes(col.id as any)) {
+                                return (
+                                    <th key={`${col.id}-filter`} style={styles.thFilter}>
+                                    <FilterInputs
+                                        filterKey={col.id}
+                                        values={metricFilters[col.id as keyof MetricFilters]}
+                                        onChange={onMetricFilterChange}
+                                        isPercentage={col.id === 'acos'}
+                                    />
+                                    </th>
+                                );
+                            }
+                            return <th key={`${col.id}-filter`} style={styles.thFilter}></th>;
                         })}
                     </tr>
                 </thead>

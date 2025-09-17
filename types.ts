@@ -122,6 +122,16 @@ export interface AutomationRule {
     profile_id: string;
 }
 
+export interface MetricFilters {
+  adjustedSpend: { min?: number; max?: number };
+  sales: { min?: number; max?: number };
+  orders: { min?: number; max?: number };
+  impressions: { min?: number; max?: number };
+  clicks: { min?: number; max?: number };
+  acos: { min?: number; max?: number };
+  roas: { min?: number; max?: number };
+}
+
 
 // --- New Types for Report Views ---
 
