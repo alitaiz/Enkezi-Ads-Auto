@@ -551,100 +551,108 @@ export function CampaignTable({
                     </tr>
                 </thead>
                 <tbody>
-                    {campaigns.map(campaign => {
-                         const currentBidRules = bidAdjustmentRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
-                        const currentSearchTermRules = searchTermRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
-                        const currentBudgetRules = budgetAccelerationRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
+                    {campaigns.length > 0 ? (
+                        campaigns.map(campaign => {
+                            const currentBidRules = bidAdjustmentRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
+                            const currentSearchTermRules = searchTermRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
+                            const currentBudgetRules = budgetAccelerationRules.filter(r => r.scope.campaignIds?.some(id => String(id) === String(campaign.campaignId)));
 
-                        return (
-                        <React.Fragment key={campaign.campaignId}>
-                            <tr>
-                                <td style={styles.td}>
-                                    <input
-                                        type="checkbox"
-                                        checked={selectedCampaignIds.has(campaign.campaignId)}
-                                        onChange={(e) => onSelectCampaign(campaign.campaignId, e.target.checked)}
-                                        onClick={e => e.stopPropagation()}
-                                        aria-label={`Select campaign ${campaign.name}`}
-                                    />
-                                </td>
-                                <td style={styles.td} title={campaign.name}>
-                                    <div style={styles.expandCell} onClick={() => onToggleExpand(campaign.campaignId)}>
-                                        <span style={{...styles.expandIcon, transform: expandedCampaignId === campaign.campaignId ? 'rotate(90deg)' : 'rotate(0deg)'}}>►</span>
-                                        <span>{campaign.name}</span>
-                                    </div>
-                                </td>
-                                <td style={{ ...styles.td, cursor: 'pointer' }} onClick={() => handleCellClick(campaign, 'state')}>
-                                    {editingCell?.id === campaign.campaignId && editingCell.field === 'state' ? (
-                                        <select style={styles.select} value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={() => handleUpdate(campaign.campaignId)} onKeyDown={(e) => handleKeyDown(e, campaign.campaignId)} autoFocus>
-                                            <option value="enabled">Enabled</option> <option value="paused">Paused</option> <option value="archived">Archived</option>
-                                        </select>
-                                    ) : <span style={styles.capitalize}>{campaign.state}</span>}
-                                </td>
-                                <td style={{ ...styles.td, cursor: 'pointer' }} onClick={() => handleCellClick(campaign, 'budget')}>
-                                    {editingCell?.id === campaign.campaignId && editingCell.field === 'budget' ? (
-                                        <input type="number" style={styles.input} value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={() => handleUpdate(campaign.campaignId)} onKeyDown={(e) => handleKeyDown(e, campaign.campaignId)} autoFocus />
-                                    ) : formatPrice(campaign.dailyBudget)}
-                                </td>
-                                <td style={styles.td}>{formatPrice(campaign.adjustedSpend)}</td>
-                                <td style={styles.td}>{formatPrice(campaign.sales)}</td>
-                                <td style={styles.td}>{formatNumber(campaign.orders)}</td>
-                                <td style={styles.td}>{formatNumber(campaign.impressions)}</td>
-                                <td style={styles.td}>{formatNumber(campaign.clicks)}</td>
-                                <td style={styles.td}>{formatPercent(campaign.acos)}</td>
-                                <td style={styles.td}>{formatRoAS(campaign.roas)}</td>
-                                <td style={styles.td}>
-                                     <div style={styles.ruleCellContainer}>
-                                        <button onClick={() => onEditRules(campaign.campaignId, 'BID_ADJUSTMENT')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
-                                        <div style={styles.ruleTagContainer}>
-                                            {currentBidRules.length > 0 ? (
-                                                currentBidRules.map(rule => (
-                                                    <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
-                                                ))
-                                            ) : (
-                                                <span style={styles.noRuleText}>-- No Rule --</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </td>
-                                 <td style={styles.td}>
-                                     <div style={styles.ruleCellContainer}>
-                                        <button onClick={() => onEditRules(campaign.campaignId, 'SEARCH_TERM_AUTOMATION')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
-                                         <div style={styles.ruleTagContainer}>
-                                            {currentSearchTermRules.length > 0 ? (
-                                                currentSearchTermRules.map(rule => (
-                                                    <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
-                                                ))
-                                            ) : (
-                                                <span style={styles.noRuleText}>-- No Rule --</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </td>
-                                <td style={styles.td}>
-                                     <div style={styles.ruleCellContainer}>
-                                        <button onClick={() => onEditRules(campaign.campaignId, 'BUDGET_ACCELERATION')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
-                                        <div style={styles.ruleTagContainer}>
-                                            {currentBudgetRules.length > 0 ? (
-                                                currentBudgetRules.map(rule => (
-                                                    <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
-                                                ))
-                                            ) : (
-                                                <span style={styles.noRuleText}>-- No Rule --</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                            {expandedCampaignId === campaign.campaignId && (
+                            return (
+                            <React.Fragment key={campaign.campaignId}>
                                 <tr>
-                                    <td colSpan={totalColumns} style={{padding: 0, borderTop: 0}}>
-                                        {renderAutomationLogsSubTable(campaign.campaignId)}
+                                    <td style={styles.td}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedCampaignIds.has(campaign.campaignId)}
+                                            onChange={(e) => onSelectCampaign(campaign.campaignId, e.target.checked)}
+                                            onClick={e => e.stopPropagation()}
+                                            aria-label={`Select campaign ${campaign.name}`}
+                                        />
+                                    </td>
+                                    <td style={styles.td} title={campaign.name}>
+                                        <div style={styles.expandCell} onClick={() => onToggleExpand(campaign.campaignId)}>
+                                            <span style={{...styles.expandIcon, transform: expandedCampaignId === campaign.campaignId ? 'rotate(90deg)' : 'rotate(0deg)'}}>►</span>
+                                            <span>{campaign.name}</span>
+                                        </div>
+                                    </td>
+                                    <td style={{ ...styles.td, cursor: 'pointer' }} onClick={() => handleCellClick(campaign, 'state')}>
+                                        {editingCell?.id === campaign.campaignId && editingCell.field === 'state' ? (
+                                            <select style={styles.select} value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={() => handleUpdate(campaign.campaignId)} onKeyDown={(e) => handleKeyDown(e, campaign.campaignId)} autoFocus>
+                                                <option value="enabled">Enabled</option> <option value="paused">Paused</option> <option value="archived">Archived</option>
+                                            </select>
+                                        ) : <span style={styles.capitalize}>{campaign.state}</span>}
+                                    </td>
+                                    <td style={{ ...styles.td, cursor: 'pointer' }} onClick={() => handleCellClick(campaign, 'budget')}>
+                                        {editingCell?.id === campaign.campaignId && editingCell.field === 'budget' ? (
+                                            <input type="number" style={styles.input} value={tempValue} onChange={(e) => setTempValue(e.target.value)} onBlur={() => handleUpdate(campaign.campaignId)} onKeyDown={(e) => handleKeyDown(e, campaign.campaignId)} autoFocus />
+                                        ) : formatPrice(campaign.dailyBudget)}
+                                    </td>
+                                    <td style={styles.td}>{formatPrice(campaign.adjustedSpend)}</td>
+                                    <td style={styles.td}>{formatPrice(campaign.sales)}</td>
+                                    <td style={styles.td}>{formatNumber(campaign.orders)}</td>
+                                    <td style={styles.td}>{formatNumber(campaign.impressions)}</td>
+                                    <td style={styles.td}>{formatNumber(campaign.clicks)}</td>
+                                    <td style={styles.td}>{formatPercent(campaign.acos)}</td>
+                                    <td style={styles.td}>{formatRoAS(campaign.roas)}</td>
+                                    <td style={styles.td}>
+                                         <div style={styles.ruleCellContainer}>
+                                            <button onClick={() => onEditRules(campaign.campaignId, 'BID_ADJUSTMENT')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
+                                            <div style={styles.ruleTagContainer}>
+                                                {currentBidRules.length > 0 ? (
+                                                    currentBidRules.map(rule => (
+                                                        <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
+                                                    ))
+                                                ) : (
+                                                    <span style={styles.noRuleText}>-- No Rule --</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </td>
+                                     <td style={styles.td}>
+                                         <div style={styles.ruleCellContainer}>
+                                            <button onClick={() => onEditRules(campaign.campaignId, 'SEARCH_TERM_AUTOMATION')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
+                                             <div style={styles.ruleTagContainer}>
+                                                {currentSearchTermRules.length > 0 ? (
+                                                    currentSearchTermRules.map(rule => (
+                                                        <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
+                                                    ))
+                                                ) : (
+                                                    <span style={styles.noRuleText}>-- No Rule --</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td style={styles.td}>
+                                         <div style={styles.ruleCellContainer}>
+                                            <button onClick={() => onEditRules(campaign.campaignId, 'BUDGET_ACCELERATION')} title="Edit Rules" style={styles.editRuleButton}>✏️</button>
+                                            <div style={styles.ruleTagContainer}>
+                                                {currentBudgetRules.length > 0 ? (
+                                                    currentBudgetRules.map(rule => (
+                                                        <span key={rule.id} style={styles.ruleTag} title={rule.name}>{rule.name}</span>
+                                                    ))
+                                                ) : (
+                                                    <span style={styles.noRuleText}>-- No Rule --</span>
+                                                )}
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
-                            )}
-                        </React.Fragment>
-                    )})}
+                                {expandedCampaignId === campaign.campaignId && (
+                                    <tr>
+                                        <td colSpan={totalColumns} style={{padding: 0, borderTop: 0}}>
+                                            {renderAutomationLogsSubTable(campaign.campaignId)}
+                                        </td>
+                                    </tr>
+                                )}
+                            </React.Fragment>
+                        )})
+                    ) : (
+                        <tr>
+                            <td colSpan={totalColumns} style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+                                No campaigns match your current filters.
+                            </td>
+                        </tr>
+                    )}
                 </tbody>
             </table>
         </div>

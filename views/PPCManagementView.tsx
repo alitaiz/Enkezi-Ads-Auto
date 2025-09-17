@@ -476,7 +476,7 @@ export function PPCManagementView() {
         });
     }, [campaigns, performanceMetrics]);
 
-    const handleMetricFilterChange = (
+    const handleMetricFilterChange = useCallback((
         key: keyof MetricFilters,
         type: 'min' | 'max',
         value: string
@@ -492,7 +492,7 @@ export function PPCManagementView() {
             }
         }));
         setCurrentPage(1); // Reset to first page on filter change
-    };
+    }, []);
     
     const filteredData = useMemo(() => {
         let data = combinedCampaignData;
@@ -781,7 +781,7 @@ export function PPCManagementView() {
             
             {(loading.data || loading.rules) ? (
                 <div style={styles.loader}>Loading campaign data...</div>
-            ) : finalDisplayData.length > 0 || searchTerm || excludeTerm ? (
+            ) : combinedCampaignData.length > 0 ? (
                 <>
                     <CampaignTable 
                         campaigns={paginatedCampaigns} 
@@ -802,7 +802,7 @@ export function PPCManagementView() {
                         metricFilters={metricFilters}
                         onMetricFilterChange={handleMetricFilterChange}
                     />
-                    <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                    {paginatedCampaigns.length > 0 && <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />}
                 </>
             ) : (
                 <div style={{...styles.loader, color: '#666'}}>No campaign data found for the selected profile and date range.</div>
