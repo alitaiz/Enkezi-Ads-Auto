@@ -45,7 +45,7 @@ const getBidAdjustmentPerformanceData = async (rule, campaignIds, maxLookbackDay
                 SUM(CASE WHEN event_type = 'sp-conversion' THEN (event_data->>'attributed_conversions_1d')::bigint ELSE 0 END) AS orders
             FROM raw_stream_events
             WHERE event_type IN ('sp-traffic', 'sp-conversion')
-              AND (event_data->>'time_window_start')::timestamptz >= '${streamStartDate.toISOString()}'
+              AND (event_data->>'time_window_start')::timestamptz >= ('${streamStartDate.toISOString().split('T')[0]}'::timestamp AT TIME ZONE '${REPORTING_TIMEZONE}')
               AND COALESCE(event_data->>'keyword_id', event_data->>'target_id') IS NOT NULL
               ${streamCampaignFilter}
             GROUP BY 1, 2, 3, 4, 5, 6
@@ -203,7 +203,7 @@ const getBudgetAccelerationPerformanceData = async (rule, campaignIds, today) =>
     }
     
     // 2. Fetch today's performance from the stream using the correct aggregation logic
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayStr = getLocalDateString(REPORTING_TIMEZONE);
     const query = `
         WITH traffic_data AS (
             SELECT
@@ -211,7 +211,7 @@ const getBudgetAccelerationPerformanceData = async (rule, campaignIds, today) =>
                 COALESCE(SUM((event_data->>'cost')::numeric), 0.00) as adjusted_spend
             FROM raw_stream_events
             WHERE event_type = 'sp-traffic'
-              AND (event_data->>'time_window_start')::timestamptz >= $1
+              AND (event_data->>'time_window_start')::timestamptz >= (($1)::timestamp AT TIME ZONE '${REPORTING_TIMEZONE}')
               AND (event_data->>'campaign_id') = ANY($2)
             GROUP BY 1
         ),
@@ -222,7 +222,7 @@ const getBudgetAccelerationPerformanceData = async (rule, campaignIds, today) =>
                 COALESCE(SUM((event_data->>'attributed_conversions_1d')::bigint), 0) as orders
             FROM raw_stream_events
             WHERE event_type = 'sp-conversion'
-              AND (event_data->>'time_window_start')::timestamptz >= $1
+              AND (event_data->>'time_window_start')::timestamptz >= (($1)::timestamp AT TIME ZONE '${REPORTING_TIMEZONE}')
               AND (event_data->>'campaign_id') = ANY($2)
             GROUP BY 1
         )
@@ -235,7 +235,7 @@ const getBudgetAccelerationPerformanceData = async (rule, campaignIds, today) =>
         FULL OUTER JOIN conversion_data c ON t.campaign_id_text = c.campaign_id_text
         WHERE COALESCE(t.campaign_id_text, c.campaign_id_text) IS NOT NULL;
     `;
-    const { rows } = await pool.query(query, [todayStart, campaignIds.map(id => String(id))]);
+    const { rows } = await pool.query(query, [todayStr, campaignIds.map(id => String(id))]);
 
     // 3. Combine and calculate final metrics
     const performanceMap = new Map();
