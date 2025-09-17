@@ -178,6 +178,10 @@ export function AutomationView() {
 
     // Update the name to indicate it's a copy
     newRule.name = `${newRule.name} - Copy`;
+    
+    // BUG FIX: Reset the scope so the duplicated rule isn't automatically
+    // applied to all of the original rule's campaigns.
+    newRule.scope = { campaignIds: [] };
 
     // The modal will now open pre-filled with this data.
     // When saved, `handleSaveRule` will see it has no 'id' and will perform a 'POST' (create).
