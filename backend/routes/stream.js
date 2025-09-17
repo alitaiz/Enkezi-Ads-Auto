@@ -151,8 +151,10 @@ router.get('/stream/campaign-metrics', async (req, res) => {
                     (event_data->>'campaign_id') as campaign_id_text,
                     COALESCE(SUM((event_data->>'impressions')::bigint), 0) as impressions,
                     COALESCE(SUM((event_data->>'clicks')::bigint), 0) as clicks,
+                    -- Adjusted Spend: Sum of all costs (positive and negative)
                     COALESCE(SUM((event_data->>'cost')::numeric), 0.00) as spend,
-                    COALESCE(SUM((event_data->>'cost')::numeric) FILTER (WHERE (event_data->>'cost')::numeric > 0), 0.00) as temp_spend
+                    -- Gross Spend: Sum of ONLY positive costs
+                    COALESCE(SUM(CASE WHEN (event_data->>'cost')::numeric > 0 THEN (event_data->>'cost')::numeric ELSE 0 END), 0.00) as temp_spend
                 FROM raw_stream_events
                 WHERE event_type = 'sp-traffic' 
                   AND (event_data->>'time_window_start')::timestamptz >= (($1)::timestamp AT TIME ZONE '${reportingTimezone}') 
