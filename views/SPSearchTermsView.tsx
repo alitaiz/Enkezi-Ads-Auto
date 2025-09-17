@@ -412,12 +412,49 @@ export function SPSearchTermsView() {
     const [dateRange, setDateRange] = useState(cache.spSearchTerms.filters ? { start: new Date(cache.spSearchTerms.filters.startDate), end: new Date(cache.spSearchTerms.filters.endDate)} : { start: new Date(), end: new Date() });
     const [isDatePickerOpen, setDatePickerOpen] = useState(false);
 
+    const formatDateForQuery = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    useEffect(() => {
+        const checkDataIntegrity = async () => {
+            const today = new Date();
+            const endDate = new Date(today);
+            endDate.setDate(today.getDate() - 2);
+
+            const startDate = new Date(endDate);
+            startDate.setDate(endDate.getDate() - 6);
+
+            const startDateStr = formatDateForQuery(startDate);
+            const endDateStr = formatDateForQuery(endDate);
+
+            try {
+                const response = await fetch('/api/database/check-missing-dates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source: 'searchTermReport', startDate: startDateStr, endDate: endDateStr }),
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    setMissingDates(data.missingDates || []);
+                    setFetchStatus({});
+                }
+            } catch (err) {
+                console.error("Failed to run data integrity check:", err);
+            }
+        };
+
+        checkDataIntegrity();
+    }, []);
+
     useEffect(() => {
         setExpandedIds(new Set());
         setSelectedIds(new Set());
     }, [flatData, viewLevel]);
 
-    
     const handleToggle = (id: string) => setExpandedIds(prev => { const s = new Set(prev); if(s.has(id)) s.delete(id); else s.add(id); return s; });
     const handleSelect = (id: string, checked: boolean) => setSelectedIds(prev => { const s = new Set(prev); if(checked) s.add(id); else s.delete(id); return s; });
     
@@ -429,34 +466,9 @@ export function SPSearchTermsView() {
         setSelectedIds(allIds);
     };
     
-    const formatDateForQuery = (d: Date) => {
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
-    
-    const checkForMissingDates = async (startDate: string, endDate: string) => {
-        try {
-            const response = await fetch('/api/database/check-missing-dates', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source: 'searchTermReport', startDate, endDate }),
-            });
-            const data = await response.json();
-            if (response.ok) {
-                setMissingDates(data.missingDates || []);
-                setFetchStatus({});
-            }
-        } catch (err) {
-            console.error("Failed to check for missing dates:", err);
-        }
-    };
-
     const handleApply = useCallback(async (range: {start: Date, end: Date}) => {
         setLoading(true);
         setError(null);
-        setMissingDates([]);
         const startDate = formatDateForQuery(range.start);
         const endDate = formatDateForQuery(range.end);
 
@@ -467,7 +479,6 @@ export function SPSearchTermsView() {
             const data: SPSearchTermReportData[] = await response.json();
             setFlatData(data);
             setCache(prev => ({ ...prev, spSearchTerms: { data, filters: { asin: '', startDate, endDate } } }));
-            await checkForMissingDates(startDate, endDate);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'An unknown error occurred.');
             setFlatData([]);
@@ -502,8 +513,10 @@ export function SPSearchTermsView() {
             const data = await response.json();
             if (!response.ok) throw new Error(data.error);
             setFetchStatus(prev => ({ ...prev, [date]: 'success' }));
-            // Refresh data after successful fetch
+            // Refresh main table data in case the fetched day is in the current view
             handleApply(dateRange);
+             // Remove the date from the missing list upon success
+            setMissingDates(prev => prev.filter(d => d !== date));
         } catch (err) {
             setFetchStatus(prev => ({ ...prev, [date]: 'error' }));
             alert(`Failed to fetch data for ${date}: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -561,7 +574,7 @@ export function SPSearchTermsView() {
             {missingDates.length > 0 && (
                 <div style={styles.integrityCheckContainer}>
                     <h3 style={styles.integrityTitle}>⚠️ Data Integrity Check</h3>
-                    <p>The following dates have missing report data in the selected range. You can fetch them individually.</p>
+                    <p>The following dates have missing report data in the last 7 days (ending 2 days ago). You can fetch them individually.</p>
                     {missingDates.map(date => (
                         <div key={date} style={styles.missingDateItem}>
                             <span>Missing data for: <strong>{date}</strong></span>
