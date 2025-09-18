@@ -191,7 +191,7 @@ router.post('/campaigns/list', async (req, res) => {
                 for (let i = 0; i < portfolioIds.length; i += chunkSize) {
                     const chunk = portfolioIds.slice(i, i + chunkSize);
                     const promise = amazonAdsApiRequest({
-                        method: 'get', url: '/v2/portfolios', profileId,
+                        method: 'get', url: '/portfolios', profileId,
                         params: { portfolioIdFilter: chunk.join(',') }
                     }).catch(e => {
                         console.error(`[Portfolio Fetch] Failed to fetch chunk of portfolios:`, e.details || e.message);
