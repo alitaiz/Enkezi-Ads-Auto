@@ -70,7 +70,7 @@ export async function getAdsApiAccessToken() {
  * A wrapper for making authenticated requests to the Amazon Ads API.
  * This is more efficient as it relies on the cached access token.
  */
-export async function amazonAdsApiRequest({ method, url, profileId, data, headers = {} }) {
+export async function amazonAdsApiRequest({ method, url, profileId, data, params, headers = {} }) {
     try {
         const accessToken = await getAdsApiAccessToken();
 
@@ -89,6 +89,7 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, header
             url: `${ADS_API_ENDPOINT}${url}`,
             headers: defaultHeaders,
             data,
+            params,
         });
 
         return response.data;
