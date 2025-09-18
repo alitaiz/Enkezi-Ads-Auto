@@ -124,8 +124,8 @@ router.post('/campaigns/list', async (req, res) => {
             campaignIdFilter: getCampaignIdFilter,
             maxResults: 100, // v4 uses maxResults
         };
-        const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/v4/campaigns', 
-            { 'Accept': 'application/json' }, 
+        const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/campaigns', 
+            { 'Accept': 'application/vnd.sbcampaigns.v4+json' }, 
             sbParams
         ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
 
