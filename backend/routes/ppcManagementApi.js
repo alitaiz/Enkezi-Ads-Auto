@@ -113,17 +113,42 @@ router.post('/campaigns/list', async (req, res) => {
         );
 
         // --- Sponsored Brands (POST v4) ---
-        const sbBody = {
-            maxResults: 500, // v4 uses maxResults in body
-            stateFilter: { include: baseStateFilter },
-        };
-        if (campaignIdFilter && Array.isArray(campaignIdFilter) && campaignIdFilter.length > 0) {
-            sbBody.campaignIdFilter = { include: campaignIdFilter.map(id => id.toString()) };
+        let sbPromise;
+        const sbCampaignIdFilter = campaignIdFilter ? campaignIdFilter.map(id => id.toString()) : [];
+        const sbHeaders = { 'Content-Type': 'application/vnd.sbcampaigns.v4+json', 'Accept': 'application/vnd.sbcampaigns.v4+json' };
+
+        // The SB v4 API has a limit of 100 IDs per filter request. We must chunk the requests.
+        if (sbCampaignIdFilter.length > 100) {
+            console.log(`[SB Fetch] Campaign ID filter has ${sbCampaignIdFilter.length} items. Chunking requests.`);
+            const chunks = [];
+            for (let i = 0; i < sbCampaignIdFilter.length; i += 100) {
+                chunks.push(sbCampaignIdFilter.slice(i, i + 100));
+            }
+            
+            const chunkPromises = chunks.map(chunk => {
+                const sbChunkBody = {
+                    maxResults: 500,
+                    stateFilter: { include: baseStateFilter },
+                    campaignIdFilter: { include: chunk }
+                };
+                return fetchCampaignsForTypePost(profileId, '/sb/v4/campaigns/list', sbHeaders, sbChunkBody);
+            });
+            
+            sbPromise = Promise.all(chunkPromises)
+                .then(results => results.flat()) // Flatten the array of arrays of campaigns
+                .catch(err => { console.error("SB Campaign chunked fetch failed:", err.details || err); return []; });
+        } else {
+            // Standard request for fewer than 100 IDs or no filter
+            const sbBody = {
+                maxResults: 500,
+                stateFilter: { include: baseStateFilter },
+            };
+            if (sbCampaignIdFilter.length > 0) {
+                sbBody.campaignIdFilter = { include: sbCampaignIdFilter };
+            }
+            sbPromise = fetchCampaignsForTypePost(profileId, '/sb/v4/campaigns/list', sbHeaders, sbBody)
+                .catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
         }
-        const sbPromise = fetchCampaignsForTypePost(profileId, '/sb/v4/campaigns/list', 
-            { 'Content-Type': 'application/vnd.sbcampaigns.v4+json', 'Accept': 'application/vnd.sbcampaigns.v4+json' }, 
-            sbBody
-        ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
 
         // --- Sponsored Display (GET) ---
         const getStateFilterForGet = baseStateFilter.map(s => s.toLowerCase()).join(',');
@@ -152,7 +177,8 @@ router.post('/campaigns/list', async (req, res) => {
          const transformedSB = sbCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
             targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
-            dailyBudget: c.budget?.amount ?? 0, // Correct for v4 response
+            // FIX: SB v4 response has a direct 'budget' number, not an object with 'amount'.
+            dailyBudget: c.budget ?? 0,
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
         const transformedSD = sdCampaigns.map(c => ({
