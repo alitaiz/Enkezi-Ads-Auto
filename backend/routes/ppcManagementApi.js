@@ -179,13 +179,13 @@ router.post('/campaigns/list', async (req, res) => {
          const transformedSB = sbCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
             targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
-            dailyBudget: c.budget ?? 0,
+            dailyBudget: c.budget?.amount ?? 0,
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
         const transformedSD = sdCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredDisplay',
             targetingType: c.tactic, state: c.state.toLowerCase(),
-            dailyBudget: c.budget?.budget ?? 0,
+            dailyBudget: c.budget?.amount ?? 0,
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
         
