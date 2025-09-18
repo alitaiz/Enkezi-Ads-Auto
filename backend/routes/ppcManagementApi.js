@@ -112,25 +112,24 @@ router.post('/campaigns/list', async (req, res) => {
             spBody
         );
 
-        // --- Sponsored Brands & Display (GET) ---
+        // --- Sponsored Brands (POST v4) ---
+        const sbBody = {
+            maxResults: 500, // v4 uses maxResults in body
+            stateFilter: { include: baseStateFilter },
+        };
+        if (campaignIdFilter && Array.isArray(campaignIdFilter) && campaignIdFilter.length > 0) {
+            sbBody.campaignIdFilter = { include: campaignIdFilter.map(id => id.toString()) };
+        }
+        const sbPromise = fetchCampaignsForTypePost(profileId, '/sb/v4/campaigns/list', 
+            { 'Content-Type': 'application/vnd.sbcampaigns.v4+json', 'Accept': 'application/vnd.sbcampaigns.v4+json' }, 
+            sbBody
+        ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
+
+        // --- Sponsored Display (GET) ---
         const getStateFilterForGet = baseStateFilter.map(s => s.toLowerCase()).join(',');
         const getCampaignIdFilter = (campaignIdFilter && Array.isArray(campaignIdFilter) && campaignIdFilter.length > 0) 
             ? campaignIdFilter.map(id => id.toString()).join(',') 
             : undefined;
-
-        // Sponsored Brands (v4)
-        const sbParams = {
-            stateFilter: getStateFilterForGet,
-            campaignIdFilter: getCampaignIdFilter,
-            maxResults: 100, // v4 uses maxResults
-        };
-        const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/campaigns', 
-            { 'Accept': 'application/vnd.sbcampaigns.v4+json' }, 
-            sbParams
-        ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
-
-
-        // Sponsored Display (v3)
         const sdParams = {
             stateFilter: getStateFilterForGet,
             campaignIdFilter: getCampaignIdFilter,
@@ -153,7 +152,7 @@ router.post('/campaigns/list', async (req, res) => {
          const transformedSB = sbCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
             targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
-            dailyBudget: c.budget?.amount ?? 0, // FIX: Use amount for v4 response structure
+            dailyBudget: c.budget?.amount ?? 0, // Correct for v4 response
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
         const transformedSD = sdCampaigns.map(c => ({
