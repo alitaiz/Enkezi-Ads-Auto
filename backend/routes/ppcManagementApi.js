@@ -116,6 +116,10 @@ router.post('/campaigns/list', async (req, res) => {
         let sbPromise;
         const sbCampaignIdFilter = campaignIdFilter ? campaignIdFilter.map(id => id.toString()) : [];
         const sbHeaders = { 'Content-Type': 'application/vnd.sbcampaigns.v4+json', 'Accept': 'application/vnd.sbcampaigns.v4+json' };
+        
+        // FIX: The SB v4 list endpoint expects a comma-separated string for stateFilter, not an array.
+        // This resolves the "Start of list found where not expected" parsing error.
+        const sbStateFilter = baseStateFilter.join(',');
 
         // The SB v4 API has a limit of 100 IDs per filter request. We must chunk the requests.
         if (sbCampaignIdFilter.length > 100) {
@@ -128,8 +132,7 @@ router.post('/campaigns/list', async (req, res) => {
             const chunkPromises = chunks.map(chunk => {
                 const sbChunkBody = {
                     maxResults: 500,
-                    // FIX: SB v4 expects a direct array for stateFilter, not an object.
-                    stateFilter: baseStateFilter, 
+                    stateFilter: sbStateFilter, 
                     campaignIdFilter: { include: chunk }
                 };
                 return fetchCampaignsForTypePost(profileId, '/sb/v4/campaigns/list', sbHeaders, sbChunkBody);
@@ -142,8 +145,7 @@ router.post('/campaigns/list', async (req, res) => {
             // Standard request for fewer than 100 IDs or no filter
             const sbBody = {
                 maxResults: 500,
-                // FIX: SB v4 expects a direct array for stateFilter, not an object.
-                stateFilter: baseStateFilter, 
+                stateFilter: sbStateFilter,
             };
             if (sbCampaignIdFilter.length > 0) {
                 sbBody.campaignIdFilter = { include: sbCampaignIdFilter };
