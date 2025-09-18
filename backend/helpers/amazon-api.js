@@ -36,18 +36,14 @@ export async function getAdsApiAccessToken() {
     }
     
     try {
-        const params = new URLSearchParams();
-        params.append('grant_type', 'refresh_token');
-        params.append('refresh_token', ADS_API_REFRESH_TOKEN);
-        params.append('client_id', ADS_API_CLIENT_ID);
-        params.append('client_secret', ADS_API_CLIENT_SECRET);
+        // Use a raw string for the body to avoid any potential serialization issues
+        // with URLSearchParams or axios, which can cause the 'Invalid key=value pair' error.
+        const body = `grant_type=refresh_token&refresh_token=${encodeURIComponent(ADS_API_REFRESH_TOKEN)}&client_id=${encodeURIComponent(ADS_API_CLIENT_ID)}&client_secret=${encodeURIComponent(ADS_API_CLIENT_SECRET)}`;
         
         // Disabling keep-alive on the token endpoint can help prevent some intermittent connection errors.
         const agent = new https.Agent({ keepAlive: false });
 
-        const response = await axios.post(LWA_TOKEN_URL, params, {
-            // FIX: Explicitly set the Content-Type header, as required by the LWA endpoint.
-            // This ensures the request is always correctly formatted.
+        const response = await axios.post(LWA_TOKEN_URL, body, {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             },
@@ -58,8 +54,7 @@ export async function getAdsApiAccessToken() {
         const data = response.data;
         
         adsApiTokenCache = {
-            // FIX: Use a more aggressive replacement to remove all whitespace characters (including newlines)
-            // from the token, which can sometimes cause this specific 'Invalid key=value pair' error.
+            // Also keep the aggressive whitespace removal just in case.
             token: data.access_token.replace(/\s/g, ''),
             // Cache for 55 minutes (token is valid for 60 minutes)
             expiresAt: Date.now() + 55 * 60 * 1000,

@@ -85,6 +85,35 @@ const fetchCampaignsForTypeGet = async (profileId, url, headers, params) => {
     return allCampaigns;
 };
 
+/**
+ * Helper function to robustly extract the budget amount from various campaign object structures.
+ * @param {object} campaign - The campaign object from the Amazon Ads API.
+ * @returns {number} The budget amount, or 0 if not found.
+ */
+const getBudgetAmount = (campaign) => {
+    if (!campaign) return 0;
+
+    // Case 1: Sponsored Display (budget is a top-level number)
+    // e.g., { "campaignId": ..., "budget": 50.00 }
+    if (typeof campaign.budget === 'number') {
+        return campaign.budget;
+    }
+
+    // Case 2: Sponsored Products / Brands (budget is an object containing a budget property)
+    // e.g., { "campaignId": ..., "budget": { "budget": 50.00, "budgetType": "DAILY" } }
+    if (campaign.budget && typeof campaign.budget.budget === 'number') {
+        return campaign.budget.budget;
+    }
+    
+    // Case 3: Sponsored Products v3 (budget is an object containing an amount property)
+    // e.g., { "campaignId": ..., "budget": { "amount": 50.00, "budgetType": "DAILY" } }
+    if (campaign.budget && typeof campaign.budget.amount === 'number') {
+        return campaign.budget.amount;
+    }
+
+    return 0;
+};
+
 
 /**
  * POST /api/amazon/campaigns/list
@@ -189,10 +218,12 @@ router.post('/campaigns/list', async (req, res) => {
 
         // --- Transform and Merge Results ---
         const transformCampaign = (campaign, type) => {
-            let dailyBudget = 0;
-            if (campaign.budget && campaign.budget.budgetType === 'DAILY' && typeof campaign.budget.amount === 'number') {
-                dailyBudget = campaign.budget.amount;
-            } else if (campaign.portfolioId) {
+            // Start with the direct budget from the campaign object itself.
+            let dailyBudget = getBudgetAmount(campaign);
+
+            // If the direct budget is 0 AND the campaign is in a portfolio,
+            // try to use the portfolio's budget as a fallback.
+            if (dailyBudget === 0 && campaign.portfolioId) {
                 const portfolioBudget = portfolioDailyBudgets.get(campaign.portfolioId.toString());
                 if (typeof portfolioBudget === 'number') {
                     dailyBudget = portfolioBudget;
