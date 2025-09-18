@@ -360,7 +360,13 @@ export function DatabaseView() {
                         <div style={styles.filterGroup}>
                             <label style={styles.label} htmlFor="eventType">Event Type</label>
                             <select id="eventType" style={styles.input} value={streamFilters.eventType} onChange={e => handleFilterChange('streamEvents', 'eventType', e.target.value)}>
-                                <option value="">All Types</option><option value="sp-traffic">SP Traffic</option><option value="sp-conversion">SP Conversion</option>
+                                <option value="">All Types</option>
+                                <option value="sp-traffic">SP Traffic</option>
+                                <option value="sp-conversion">SP Conversion</option>
+                                <option value="sb-traffic">SB Traffic</option>
+                                <option value="sb-conversion">SB Conversion</option>
+                                <option value="sd-traffic">SD Traffic</option>
+                                <option value="sd-conversion">SD Conversion</option>
                             </select>
                         </div>
                         <div style={styles.filterGroup}>
