@@ -128,7 +128,8 @@ router.post('/campaigns/list', async (req, res) => {
             const chunkPromises = chunks.map(chunk => {
                 const sbChunkBody = {
                     maxResults: 500,
-                    stateFilter: { include: baseStateFilter },
+                    // FIX: SB v4 expects a direct array for stateFilter, not an object.
+                    stateFilter: baseStateFilter, 
                     campaignIdFilter: { include: chunk }
                 };
                 return fetchCampaignsForTypePost(profileId, '/sb/v4/campaigns/list', sbHeaders, sbChunkBody);
@@ -141,7 +142,8 @@ router.post('/campaigns/list', async (req, res) => {
             // Standard request for fewer than 100 IDs or no filter
             const sbBody = {
                 maxResults: 500,
-                stateFilter: { include: baseStateFilter },
+                // FIX: SB v4 expects a direct array for stateFilter, not an object.
+                stateFilter: baseStateFilter, 
             };
             if (sbCampaignIdFilter.length > 0) {
                 sbBody.campaignIdFilter = { include: sbCampaignIdFilter };
@@ -177,7 +179,6 @@ router.post('/campaigns/list', async (req, res) => {
          const transformedSB = sbCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
             targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
-            // FIX: SB v4 response has a direct 'budget' number, not an object with 'amount'.
             dailyBudget: c.budget ?? 0,
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
