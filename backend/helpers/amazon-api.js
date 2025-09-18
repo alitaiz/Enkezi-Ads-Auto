@@ -1,6 +1,7 @@
 // backend/helpers/amazon-api.js
 import axios from 'axios';
 import https from 'https';
+import { URLSearchParams } from 'url';
 
 const LWA_TOKEN_URL = 'https://api.amazon.com/auth/o2/token';
 const ADS_API_ENDPOINT = 'https://advertising-api.amazon.com';
@@ -35,13 +36,17 @@ export async function getAdsApiAccessToken() {
     }
     
     try {
-        const body = `grant_type=refresh_token&refresh_token=${encodeURIComponent(ADS_API_REFRESH_TOKEN)}&client_id=${encodeURIComponent(ADS_API_CLIENT_ID)}&client_secret=${encodeURIComponent(ADS_API_CLIENT_SECRET)}`;
-        
-        const agent = new https.Agent({ keepAlive: false });
+        // Using URLSearchParams is a more robust and standard way to build the request body.
+        const body = new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: ADS_API_REFRESH_TOKEN,
+            client_id: ADS_API_CLIENT_ID,
+            client_secret: ADS_API_CLIENT_SECRET,
+        });
 
-        const response = await axios.post(LWA_TOKEN_URL, body, {
+        // Corrected the typo 'httpsagENT' to 'httpsAgent' and simplified the call.
+        const response = await axios.post(LWA_TOKEN_URL, body.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            httpsagENT: agent
         });
 
         // Robust check to ensure a valid token string was received from Amazon.
