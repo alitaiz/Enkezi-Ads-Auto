@@ -117,8 +117,6 @@ router.post('/campaigns/list', async (req, res) => {
         const sbCampaignIdFilter = campaignIdFilter ? campaignIdFilter.map(id => id.toString()) : [];
         const sbHeaders = { 'Content-Type': 'application/vnd.sbcampaigns.v4+json', 'Accept': 'application/vnd.sbcampaigns.v4+json' };
         
-        // FIX: The SB v4 list endpoint seems to expect an object for stateFilter, similar to SP,
-        // despite what some documentation might suggest. This resolves the "Expected null" error.
         const sbStateFilterObject = { include: baseStateFilter };
 
         // The SB v4 API has a limit of 100 IDs per filter request. We must chunk the requests.
@@ -131,7 +129,7 @@ router.post('/campaigns/list', async (req, res) => {
             
             const chunkPromises = chunks.map(chunk => {
                 const sbChunkBody = {
-                    maxResults: 500,
+                    pageSize: 100, // FIX: Use 'pageSize' with a max of 100
                     stateFilter: sbStateFilterObject, 
                     campaignIdFilter: { include: chunk }
                 };
@@ -144,7 +142,7 @@ router.post('/campaigns/list', async (req, res) => {
         } else {
             // Standard request for fewer than 100 IDs or no filter
             const sbBody = {
-                maxResults: 500,
+                pageSize: 100, // FIX: Use 'pageSize' with a max of 100
                 stateFilter: sbStateFilterObject,
             };
             if (sbCampaignIdFilter.length > 0) {
