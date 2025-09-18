@@ -113,26 +113,26 @@ router.post('/campaigns/list', async (req, res) => {
         );
 
         // --- Sponsored Brands & Display (GET) ---
-        // These APIs require lowercase state filters
         const getStateFilterForGet = baseStateFilter.map(s => s.toLowerCase()).join(',');
         const getCampaignIdFilter = (campaignIdFilter && Array.isArray(campaignIdFilter) && campaignIdFilter.length > 0) 
             ? campaignIdFilter.map(id => id.toString()).join(',') 
             : undefined;
 
-        // Sponsored Brands (v3)
+        // Sponsored Brands (v4)
         const sbParams = {
             stateFilter: getStateFilterForGet,
             campaignIdFilter: getCampaignIdFilter,
-            count: 100,
+            maxResults: 100, // v4 uses maxResults
         };
-        const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/campaigns', 
-            { 'Accept': 'application/json' }, // FIX: Use standard JSON header for SB to resolve 406
+        const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/v4/campaigns', 
+            { 'Accept': 'application/json' }, 
             sbParams
         ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
 
+
         // Sponsored Display (v3)
         const sdParams = {
-            stateFilter: getStateFilterForGet, // FIX: Use lowercase state filter to resolve 400
+            stateFilter: getStateFilterForGet,
             campaignIdFilter: getCampaignIdFilter,
             count: 100,
         };
@@ -153,7 +153,7 @@ router.post('/campaigns/list', async (req, res) => {
          const transformedSB = sbCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
             targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
-            dailyBudget: c.budget ?? 0,
+            dailyBudget: c.budget?.amount ?? 0, // FIX: Use amount for v4 response structure
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
         const transformedSD = sdCampaigns.map(c => ({
