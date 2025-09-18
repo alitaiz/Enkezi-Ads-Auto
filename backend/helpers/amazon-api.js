@@ -1,6 +1,5 @@
 // backend/helpers/amazon-api.js
 import axios from 'axios';
-import { URLSearchParams } from 'url';
 import https from 'https';
 
 const LWA_TOKEN_URL = 'https://api.amazon.com/auth/o2/token';
@@ -36,26 +35,25 @@ export async function getAdsApiAccessToken() {
     }
     
     try {
-        // Use a raw string for the body to avoid any potential serialization issues
-        // with URLSearchParams or axios, which can cause the 'Invalid key=value pair' error.
         const body = `grant_type=refresh_token&refresh_token=${encodeURIComponent(ADS_API_REFRESH_TOKEN)}&client_id=${encodeURIComponent(ADS_API_CLIENT_ID)}&client_secret=${encodeURIComponent(ADS_API_CLIENT_SECRET)}`;
         
-        // Disabling keep-alive on the token endpoint can help prevent some intermittent connection errors.
         const agent = new https.Agent({ keepAlive: false });
 
         const response = await axios.post(LWA_TOKEN_URL, body, {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            httpsAgent: agent
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            httpsagENT: agent
         });
 
-
-        const data = response.data;
+        // Robust check to ensure a valid token string was received from Amazon.
+        if (!response.data || typeof response.data.access_token !== 'string' || response.data.access_token.trim() === '') {
+            console.error('[Auth] Invalid token response from Amazon LWA:', response.data);
+            throw new Error('Failed to retrieve a valid access_token from Amazon LWA. The response was malformed.');
+        }
+        
+        const accessToken = response.data.access_token.trim();
         
         adsApiTokenCache = {
-            // Also keep the aggressive whitespace removal just in case.
-            token: data.access_token.replace(/\s/g, ''),
+            token: accessToken,
             // Cache for 55 minutes (token is valid for 60 minutes)
             expiresAt: Date.now() + 55 * 60 * 1000,
         };
@@ -66,33 +64,46 @@ export async function getAdsApiAccessToken() {
     } catch (error) {
         // Clear the cache on a failed refresh attempt.
         adsApiTokenCache = { token: null, expiresAt: 0 };
-        console.error("[Auth] Error refreshing Amazon Ads API access token:", error.response?.data || error.message);
-        throw new Error('Could not refresh Amazon Ads API access token. Please check your credentials.');
+        const errorMessage = error.response?.data?.error_description || error.response?.data?.message || error.message;
+        console.error("[Auth] Error refreshing Amazon Ads API access token:", errorMessage);
+        throw new Error(`Could not refresh Amazon Ads API access token: ${errorMessage}. Please check your credentials.`);
     }
 }
 
 /**
  * A wrapper for making authenticated requests to the Amazon Ads API.
- * This is more efficient as it relies on the cached access token.
+ * This function is now more robust, guarding against invalid tokens and header overwrites.
  */
 export async function amazonAdsApiRequest({ method, url, profileId, data, params, headers = {} }) {
     try {
         const accessToken = await getAdsApiAccessToken();
 
-        const defaultHeaders = {
+        // Guard against falsy tokens to prevent malformed Authorization headers.
+        if (!accessToken) {
+            throw new Error("Cannot make Amazon Ads API request: failed to obtain a valid access token.");
+        }
+        
+        // Safely merge headers, preventing any passed-in 'Authorization' header
+        // from overwriting the one we are carefully constructing.
+        const { Authorization, ...otherHeaders } = headers;
+        if (Authorization) {
+            console.warn('[API Request] An explicit Authorization header was passed to amazonAdsApiRequest and has been ignored to prevent conflicts.');
+        }
+
+        const finalHeaders = {
             'Amazon-Advertising-API-ClientId': process.env.ADS_API_CLIENT_ID,
-            'Authorization': `Bearer ${accessToken}`,
-            ...headers
+            'Authorization': `Bearer ${accessToken}`, // This is now guaranteed to be safe.
+            ...otherHeaders
         };
 
         if (profileId) {
-            defaultHeaders['Amazon-Advertising-API-Scope'] = profileId;
+            finalHeaders['Amazon-Advertising-API-Scope'] = profileId;
         }
 
         const response = await axios({
             method,
             url: `${ADS_API_ENDPOINT}${url}`,
-            headers: defaultHeaders,
+            headers: finalHeaders,
             data,
             params,
         });
