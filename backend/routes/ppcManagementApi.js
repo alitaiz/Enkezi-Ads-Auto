@@ -113,7 +113,8 @@ router.post('/campaigns/list', async (req, res) => {
         );
 
         // --- Sponsored Brands & Display (GET) ---
-        const getStateFilterForGet = baseStateFilter.map(s => s.toUpperCase()).join(',');
+        // These APIs require lowercase state filters
+        const getStateFilterForGet = baseStateFilter.map(s => s.toLowerCase()).join(',');
         const getCampaignIdFilter = (campaignIdFilter && Array.isArray(campaignIdFilter) && campaignIdFilter.length > 0) 
             ? campaignIdFilter.map(id => id.toString()).join(',') 
             : undefined;
@@ -125,18 +126,18 @@ router.post('/campaigns/list', async (req, res) => {
             count: 100,
         };
         const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/campaigns', 
-            { 'Accept': 'application/vnd.sbcampaignresponse.v3+json' }, // FIX: Use correct versioned header for SB
+            { 'Accept': 'application/json' }, // FIX: Use standard JSON header for SB to resolve 406
             sbParams
         ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
 
         // Sponsored Display (v3)
         const sdParams = {
-            stateFilter: getStateFilterForGet,
+            stateFilter: getStateFilterForGet, // FIX: Use lowercase state filter to resolve 400
             campaignIdFilter: getCampaignIdFilter,
             count: 100,
         };
         const sdPromise = fetchCampaignsForTypeGet(profileId, '/sd/campaigns', 
-            { 'Accept': 'application/json' }, // FIX: Use standard JSON header for SD
+            { 'Accept': 'application/json' },
             sdParams
         ).catch(err => { console.error("SD Campaign fetch failed:", err.details || err); return []; });
 
