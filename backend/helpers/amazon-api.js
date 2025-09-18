@@ -45,12 +45,22 @@ export async function getAdsApiAccessToken() {
         // Disabling keep-alive on the token endpoint can help prevent some intermittent connection errors.
         const agent = new https.Agent({ keepAlive: false });
 
-        const response = await axios.post(LWA_TOKEN_URL, params, { httpsAgent: agent });
+        const response = await axios.post(LWA_TOKEN_URL, params, {
+            // FIX: Explicitly set the Content-Type header, as required by the LWA endpoint.
+            // This ensures the request is always correctly formatted.
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            httpsAgent: agent
+        });
+
 
         const data = response.data;
         
         adsApiTokenCache = {
-            token: data.access_token.trim(),
+            // FIX: Use a more aggressive replacement to remove all whitespace characters (including newlines)
+            // from the token, which can sometimes cause this specific 'Invalid key=value pair' error.
+            token: data.access_token.replace(/\s/g, ''),
             // Cache for 55 minutes (token is valid for 60 minutes)
             expiresAt: Date.now() + 55 * 60 * 1000,
         };
