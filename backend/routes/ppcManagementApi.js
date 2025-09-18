@@ -122,23 +122,23 @@ router.post('/campaigns/list', async (req, res) => {
         const sbParams = {
             stateFilter: getStateFilterForGet,
             campaignIdFilter: getCampaignIdFilter,
-            count: 100, // SB v3 uses 'count'
+            count: 100,
         };
         const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/campaigns', 
-            { 'Accept': 'application/json' }, // SB v3 uses a standard JSON accept header
+            { 'Accept': 'application/vnd.sbcampaignresponse.v3+json' }, // FIX: Use correct versioned header for SB
             sbParams
-        ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; }); // Add resilience
+        ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
 
         // Sponsored Display (v3)
         const sdParams = {
             stateFilter: getStateFilterForGet,
             campaignIdFilter: getCampaignIdFilter,
-            count: 100, // SD uses 'count'
+            count: 100,
         };
         const sdPromise = fetchCampaignsForTypeGet(profileId, '/sd/campaigns', 
-            { 'Accept': 'application/vnd.sdcampaignresponse.v3+json' }, // Corrected Accept header
+            { 'Accept': 'application/json' }, // FIX: Use standard JSON header for SD
             sdParams
-        ).catch(err => { console.error("SD Campaign fetch failed:", err.details || err); return []; }); // Add resilience
+        ).catch(err => { console.error("SD Campaign fetch failed:", err.details || err); return []; });
 
         const [spCampaigns, sbCampaigns, sdCampaigns] = await Promise.all([spPromise, sbPromise, sdPromise]);
 
@@ -152,7 +152,7 @@ router.post('/campaigns/list', async (req, res) => {
          const transformedSB = sbCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
             targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
-            dailyBudget: c.budget ?? 0, // SB v3 budget is a direct number
+            dailyBudget: c.budget ?? 0,
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
         const transformedSD = sdCampaigns.map(c => ({
