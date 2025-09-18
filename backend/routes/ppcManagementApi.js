@@ -88,7 +88,8 @@ const fetchCampaignsForTypeGet = async (profileId, url, headers, params) => {
 
 /**
  * POST /api/amazon/campaigns/list
- * Fetches a list of campaigns across all ad types (SP, SB, SD).
+ * Fetches a list of campaigns across all ad types (SP, SB, SD), and enriches them
+ * with portfolio budget information.
  */
 router.post('/campaigns/list', async (req, res) => {
     const { profileId, stateFilter, campaignIdFilter } = req.body;
@@ -119,77 +120,100 @@ router.post('/campaigns/list', async (req, res) => {
         
         const sbStateFilterObject = { include: baseStateFilter };
 
-        // The SB v4 API has a limit of 100 IDs per filter request. We must chunk the requests.
         if (sbCampaignIdFilter.length > 100) {
-            console.log(`[SB Fetch] Campaign ID filter has ${sbCampaignIdFilter.length} items. Chunking requests.`);
             const chunks = [];
             for (let i = 0; i < sbCampaignIdFilter.length; i += 100) {
                 chunks.push(sbCampaignIdFilter.slice(i, i + 100));
             }
             
             const chunkPromises = chunks.map(chunk => {
-                const sbChunkBody = {
-                    pageSize: 100, // FIX: Use 'pageSize' with a max of 100
-                    stateFilter: sbStateFilterObject, 
-                    campaignIdFilter: { include: chunk }
-                };
+                const sbChunkBody = { pageSize: 100, stateFilter: sbStateFilterObject, campaignIdFilter: { include: chunk } };
                 return fetchCampaignsForTypePost(profileId, '/sb/v4/campaigns/list', sbHeaders, sbChunkBody);
             });
             
-            sbPromise = Promise.all(chunkPromises)
-                .then(results => results.flat()) // Flatten the array of arrays of campaigns
+            sbPromise = Promise.all(chunkPromises).then(results => results.flat())
                 .catch(err => { console.error("SB Campaign chunked fetch failed:", err.details || err); return []; });
         } else {
-            // Standard request for fewer than 100 IDs or no filter
-            const sbBody = {
-                pageSize: 100, // FIX: Use 'pageSize' with a max of 100
-                stateFilter: sbStateFilterObject,
-            };
-            if (sbCampaignIdFilter.length > 0) {
-                sbBody.campaignIdFilter = { include: sbCampaignIdFilter };
-            }
+            const sbBody = { pageSize: 100, stateFilter: sbStateFilterObject };
+            if (sbCampaignIdFilter.length > 0) sbBody.campaignIdFilter = { include: sbCampaignIdFilter };
             sbPromise = fetchCampaignsForTypePost(profileId, '/sb/v4/campaigns/list', sbHeaders, sbBody)
                 .catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; });
         }
 
         // --- Sponsored Display (GET) ---
         const getStateFilterForGet = baseStateFilter.map(s => s.toLowerCase()).join(',');
-        const getCampaignIdFilter = (campaignIdFilter && Array.isArray(campaignIdFilter) && campaignIdFilter.length > 0) 
-            ? campaignIdFilter.map(id => id.toString()).join(',') 
-            : undefined;
-        const sdParams = {
-            stateFilter: getStateFilterForGet,
-            campaignIdFilter: getCampaignIdFilter,
-            count: 100,
-        };
-        const sdPromise = fetchCampaignsForTypeGet(profileId, '/sd/campaigns', 
-            { 'Accept': 'application/json' },
-            sdParams
-        ).catch(err => { console.error("SD Campaign fetch failed:", err.details || err); return []; });
+        const getCampaignIdFilter = (campaignIdFilter && campaignIdFilter.length > 0) ? campaignIdFilter.join(',') : undefined;
+        const sdParams = { stateFilter: getStateFilterForGet, campaignIdFilter: getCampaignIdFilter, count: 100 };
+        const sdPromise = fetchCampaignsForTypeGet(profileId, '/sd/campaigns', { 'Accept': 'application/json' }, sdParams)
+            .catch(err => { console.error("SD Campaign fetch failed:", err.details || err); return []; });
 
         const [spCampaigns, sbCampaigns, sdCampaigns] = await Promise.all([spPromise, sbPromise, sdPromise]);
 
-        // Transform and merge results
-        const transformedSP = spCampaigns.map(c => ({
-            campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredProducts',
-            targetingType: c.targetingType, state: c.state.toLowerCase(),
-            dailyBudget: c.budget?.amount ?? 0,
-            startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
-        }));
-         const transformedSB = sbCampaigns.map(c => ({
-            campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
-            targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
-            dailyBudget: c.budget?.amount ?? 0,
-            startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
-        }));
-        const transformedSD = sdCampaigns.map(c => ({
-            campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredDisplay',
-            targetingType: c.tactic, state: c.state.toLowerCase(),
-            dailyBudget: c.budget?.amount ?? 0,
-            startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
-        }));
-        
-        const allCampaigns = [...transformedSP, ...transformedSB, ...transformedSD];
+        // --- Portfolio Budget Enrichment Step ---
+        const allRawCampaigns = [...spCampaigns, ...sbCampaigns, ...sdCampaigns];
+        const portfolioIds = [...new Set(allRawCampaigns.map(c => c.portfolioId).filter(Boolean).map(String))];
+        const portfolioDailyBudgets = new Map();
+
+        if (portfolioIds.length > 0) {
+            console.log(`[Portfolio Fetch] Found ${portfolioIds.length} unique portfolio IDs. Fetching their budgets...`);
+            try {
+                const chunkSize = 100;
+                const portfolioPromises = [];
+                for (let i = 0; i < portfolioIds.length; i += chunkSize) {
+                    const chunk = portfolioIds.slice(i, i + chunkSize);
+                    const promise = amazonAdsApiRequest({
+                        method: 'get', url: '/sp/portfolios', profileId,
+                        params: { portfolioIdFilter: chunk.join(',') }
+                    }).catch(e => {
+                        console.error(`[Portfolio Fetch] Failed to fetch chunk of portfolios:`, e.details || e.message);
+                        return [];
+                    });
+                    portfolioPromises.push(promise);
+                }
+                
+                const portfolioChunks = await Promise.all(portfolioPromises);
+                const allPortfolios = portfolioChunks.flat();
+
+                if (Array.isArray(allPortfolios)) {
+                    allPortfolios.forEach(p => {
+                        if (p.budget && p.budget.budgetType === 'DAILY' && typeof p.budget.amount === 'number') {
+                            portfolioDailyBudgets.set(p.portfolioId.toString(), p.budget.amount);
+                        }
+                    });
+                }
+                console.log(`[Portfolio Fetch] Successfully mapped daily budgets for ${portfolioDailyBudgets.size} portfolios.`);
+            } catch (e) {
+                console.error("[Portfolio Fetch] A critical error occurred while fetching portfolio budgets, continuing without them.", e);
+            }
+        }
+
+        // --- Transform and Merge Results ---
+        const transformCampaign = (campaign, type) => {
+            let dailyBudget = 0;
+            if (campaign.budget && campaign.budget.budgetType === 'DAILY' && typeof campaign.budget.amount === 'number') {
+                dailyBudget = campaign.budget.amount;
+            } else if (campaign.portfolioId) {
+                const portfolioBudget = portfolioDailyBudgets.get(campaign.portfolioId.toString());
+                if (typeof portfolioBudget === 'number') {
+                    dailyBudget = portfolioBudget;
+                }
+            }
+
+            return {
+                campaignId: campaign.campaignId, name: campaign.name, campaignType: type,
+                targetingType: campaign.targetingType || campaign.tactic || 'UNKNOWN',
+                state: (campaign.state || 'archived').toLowerCase(),
+                dailyBudget: dailyBudget,
+                startDate: campaign.startDate, endDate: campaign.endDate, bidding: campaign.bidding,
+                portfolioId: campaign.portfolioId,
+            };
+        };
+
+        const allCampaigns = [
+            ...spCampaigns.map(c => transformCampaign(c, 'sponsoredProducts')),
+            ...sbCampaigns.map(c => transformCampaign(c, 'sponsoredBrands')),
+            ...sdCampaigns.map(c => transformCampaign(c, 'sponsoredDisplay')),
+        ];
         
         res.json({ campaigns: allCampaigns });
     } catch (error) {
@@ -420,12 +444,11 @@ router.post('/negativeKeywords', async (req, res) => {
     }
 
     try {
-        // FIX: The Amazon API expects uppercase enum values for matchType, e.g., 'NEGATIVE_EXACT'.
-        // The previous logic and comment were incorrect.
+        // The Amazon API expects uppercase enum values for matchType, e.g., 'NEGATIVE_EXACT'.
         const transformedKeywords = negativeKeywords.map(kw => ({
             ...kw,
             state: 'ENABLED',
-            matchType: kw.matchType // Pass the value directly from the request
+            matchType: kw.matchType
         }));
 
         const data = await amazonAdsApiRequest({
