@@ -145,29 +145,45 @@ router.get('/stream/campaign-metrics', async (req, res) => {
     const reportingTimezone = 'America/Los_Angeles';
 
     try {
+        // This query now handles all ad types (SP, SB, SD) and different JSON key casings (snake_case vs camelCase).
         const query = `
-            WITH traffic_data AS (
+            WITH all_events AS (
                 SELECT
-                    (event_data->>'campaign_id') as campaign_id_text,
+                    -- Normalize campaign ID from different possible keys
+                    COALESCE(event_data->>'campaign_id', event_data->>'campaignId') as campaign_id_text,
+                    -- Normalize timestamp from different possible keys
+                    COALESCE(event_data->>'time_window_start', event_data->>'timeWindowStart') as time_window_start_text,
+                    event_type,
+                    event_data
+                FROM raw_stream_events
+                WHERE event_type IN (
+                    'sp-traffic', 'sp-conversion',
+                    'sb-traffic', 'sb-conversion',
+                    'sd-traffic', 'sd-conversion'
+                )
+            ),
+            traffic_data AS (
+                SELECT
+                    campaign_id_text,
                     COALESCE(SUM((event_data->>'impressions')::bigint), 0) as impressions,
                     COALESCE(SUM((event_data->>'clicks')::bigint), 0) as clicks,
-                    -- Adjusted Spend: Sum of all costs (positive and negative adjustments)
                     COALESCE(SUM((event_data->>'cost')::numeric), 0.00) as adjusted_spend
-                FROM raw_stream_events
-                WHERE event_type = 'sp-traffic'
-                  AND (event_data->>'time_window_start')::timestamptz >= (($1)::timestamp AT TIME ZONE '${reportingTimezone}') 
-                  AND (event_data->>'time_window_start')::timestamptz < ((($2)::date + interval '1 day')::timestamp AT TIME ZONE '${reportingTimezone}')
+                FROM all_events
+                WHERE event_type IN ('sp-traffic', 'sb-traffic', 'sd-traffic')
+                  AND (time_window_start_text)::timestamptz >= (($1)::timestamp AT TIME ZONE '${reportingTimezone}') 
+                  AND (time_window_start_text)::timestamptz < ((($2)::date + interval '1 day')::timestamp AT TIME ZONE '${reportingTimezone}')
                 GROUP BY 1
             ),
             conversion_data AS (
                 SELECT
-                    (event_data->>'campaign_id') as campaign_id_text,
-                    COALESCE(SUM((event_data->>'attributed_conversions_1d')::bigint), 0) as orders,
-                    COALESCE(SUM((event_data->>'attributed_sales_1d')::numeric), 0.00) as sales
-                FROM raw_stream_events
-                WHERE event_type = 'sp-conversion'
-                  AND (event_data->>'time_window_start')::timestamptz >= (($1)::timestamp AT TIME ZONE '${reportingTimezone}') 
-                  AND (event_data->>'time_window_start')::timestamptz < ((($2)::date + interval '1 day')::timestamp AT TIME ZONE '${reportingTimezone}')
+                    campaign_id_text,
+                    -- Use the most common keys for orders and sales, defaulting to 0
+                    COALESCE(SUM(COALESCE((event_data->>'attributed_conversions_1d')::bigint, (event_data->>'attributedConversions1d')::bigint, (event_data->>'purchases')::bigint)), 0) as orders,
+                    COALESCE(SUM(COALESCE((event_data->>'attributed_sales_1d')::numeric, (event_data->>'attributedSales1d')::numeric, (event_data->>'sales')::numeric)), 0.00) as sales
+                FROM all_events
+                WHERE event_type IN ('sp-conversion', 'sb-conversion', 'sd-conversion')
+                  AND (time_window_start_text)::timestamptz >= (($1)::timestamp AT TIME ZONE '${reportingTimezone}') 
+                  AND (time_window_start_text)::timestamptz < ((($2)::date + interval '1 day')::timestamp AT TIME ZONE '${reportingTimezone}')
                 GROUP BY 1
             )
             SELECT

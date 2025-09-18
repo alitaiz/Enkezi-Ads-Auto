@@ -21,9 +21,41 @@ router.get('/profiles', async (req, res) => {
 });
 
 /**
+ * Fetches campaigns for a specific ad product (SP, SB, SD) with pagination.
+ */
+const fetchCampaignsForType = async (profileId, url, headers, body) => {
+    let allCampaigns = [];
+    let nextToken = null;
+    
+    do {
+        const requestBody = { ...body };
+        if (nextToken) {
+            requestBody.nextToken = nextToken;
+        }
+
+        const data = await amazonAdsApiRequest({
+            method: 'post',
+            url,
+            profileId,
+            data: requestBody,
+            headers,
+        });
+
+        const campaignsKey = Object.keys(data).find(k => k.toLowerCase().includes('campaigns'));
+        if (campaignsKey && data[campaignsKey]) {
+            allCampaigns = allCampaigns.concat(data[campaignsKey]);
+        }
+        nextToken = data.nextToken;
+
+    } while (nextToken);
+
+    return allCampaigns;
+};
+
+
+/**
  * POST /api/amazon/campaigns/list
- * Fetches a list of Sponsored Products campaigns.
- * Now supports filtering by a list of campaign IDs.
+ * Fetches a list of campaigns across all ad types (SP, SB, SD).
  */
 router.post('/campaigns/list', async (req, res) => {
     const { profileId, stateFilter, campaignIdFilter } = req.body;
@@ -32,45 +64,54 @@ router.post('/campaigns/list', async (req, res) => {
     }
 
     try {
-        const requestBody = {
-            maxResults: 1000,
+        const baseBody = {
+            maxResults: 500, // Max allowed by some endpoints
             stateFilter: { include: stateFilter || ["ENABLED", "PAUSED", "ARCHIVED"] },
         };
-        // If a list of specific campaign IDs is provided, add it to the request.
-        // This is crucial for fetching metadata for campaigns that have metrics but might be outside the main state filter.
+
         if (campaignIdFilter && Array.isArray(campaignIdFilter) && campaignIdFilter.length > 0) {
-            requestBody.campaignIdFilter = { include: campaignIdFilter.map(id => id.toString()) };
+            baseBody.campaignIdFilter = { include: campaignIdFilter.map(id => id.toString()) };
         }
 
-        let allCampaigns = [];
-        let nextToken = null;
-        
-        do {
-            if (nextToken) {
-                requestBody.nextToken = nextToken;
-            }
-            
-            const data = await amazonAdsApiRequest({
-                method: 'post',
-                url: '/sp/campaigns/list',
-                profileId,
-                data: requestBody,
-                headers: { 'Content-Type': 'application/vnd.spCampaign.v3+json', 'Accept': 'application/vnd.spCampaign.v3+json' },
-            });
+        // Create promises for each ad type
+        const spPromise = fetchCampaignsForType(profileId, '/sp/campaigns/list', 
+            { 'Content-Type': 'application/vnd.spCampaign.v3+json', 'Accept': 'application/vnd.spCampaign.v3+json' }, 
+            baseBody
+        );
+        const sbPromise = fetchCampaignsForType(profileId, '/sb/campaigns/list', 
+            { 'Content-Type': 'application/vnd.sbcampaign.v4+json' },
+            baseBody
+        );
+        const sdPromise = fetchCampaignsForType(profileId, '/sd/campaigns/list', 
+            { 'Content-Type': 'application/vnd.sdcampaign.v3.1+json' },
+            baseBody
+        );
 
-            if (data.campaigns) {
-                allCampaigns = allCampaigns.concat(data.campaigns);
-            }
-            nextToken = data.nextToken;
-        } while (nextToken);
-        
-        const transformedCampaigns = allCampaigns.map(c => ({
+        const [spCampaigns, sbCampaigns, sdCampaigns] = await Promise.all([spPromise, sbPromise, sdPromise]);
+
+        // Transform and merge results
+        const transformedSP = spCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredProducts',
             targetingType: c.targetingType, state: c.state.toLowerCase(),
             dailyBudget: c.budget?.budget ?? c.budget?.amount ?? 0,
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
-        res.json({ campaigns: transformedCampaigns });
+         const transformedSB = sbCampaigns.map(c => ({
+            campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
+            targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
+            dailyBudget: c.budget?.budget ?? c.budget?.amount ?? 0,
+            startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
+        }));
+        const transformedSD = sdCampaigns.map(c => ({
+            campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredDisplay',
+            targetingType: c.tactic, state: c.state.toLowerCase(),
+            dailyBudget: c.budget?.budget ?? c.budget?.amount ?? 0,
+            startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
+        }));
+        
+        const allCampaigns = [...transformedSP, ...transformedSB, ...transformedSD];
+        
+        res.json({ campaigns: allCampaigns });
     } catch (error) {
         res.status(error.status || 500).json(error.details || { message: 'An unknown error occurred' });
     }
