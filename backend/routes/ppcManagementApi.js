@@ -72,9 +72,11 @@ const fetchCampaignsForTypeGet = async (profileId, url, headers, params) => {
             params: requestParams,
             headers,
         });
-
-        if (data.campaigns && Array.isArray(data.campaigns)) {
-            allCampaigns = allCampaigns.concat(data.campaigns);
+        
+        // Handle different response structures gracefully
+        const campaignsInResponse = data.campaigns || data;
+        if (Array.isArray(campaignsInResponse)) {
+            allCampaigns = allCampaigns.concat(campaignsInResponse);
         }
         nextToken = data.nextToken;
 
@@ -111,30 +113,30 @@ router.post('/campaigns/list', async (req, res) => {
         );
 
         // --- Sponsored Brands & Display (GET) ---
-        const getStateFilterForGet = baseStateFilter.map(s => s.toLowerCase()).join(',');
+        const getStateFilterForGet = baseStateFilter.map(s => s.toUpperCase()).join(',');
         const getCampaignIdFilter = (campaignIdFilter && Array.isArray(campaignIdFilter) && campaignIdFilter.length > 0) 
             ? campaignIdFilter.map(id => id.toString()).join(',') 
             : undefined;
 
-        // Sponsored Brands
+        // Sponsored Brands (v3)
         const sbParams = {
             stateFilter: getStateFilterForGet,
             campaignIdFilter: getCampaignIdFilter,
-            maxResults: 100, // SB v4 supports maxResults
+            count: 100, // SB v3 uses 'count'
         };
-        const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/v4/campaigns', 
-            { 'Accept': 'application/vnd.sbcampaign.v4+json' },
+        const sbPromise = fetchCampaignsForTypeGet(profileId, '/sb/campaigns', 
+            { 'Accept': 'application/json' }, // SB v3 uses a standard JSON accept header
             sbParams
         ).catch(err => { console.error("SB Campaign fetch failed:", err.details || err); return []; }); // Add resilience
 
-        // Sponsored Display
+        // Sponsored Display (v3)
         const sdParams = {
             stateFilter: getStateFilterForGet,
             campaignIdFilter: getCampaignIdFilter,
             count: 100, // SD uses 'count'
         };
         const sdPromise = fetchCampaignsForTypeGet(profileId, '/sd/campaigns', 
-            { 'Accept': 'application/vnd.sdcampaignresponse.v3.3+json' },
+            { 'Accept': 'application/vnd.sdcampaignresponse.v3+json' }, // Corrected Accept header
             sdParams
         ).catch(err => { console.error("SD Campaign fetch failed:", err.details || err); return []; }); // Add resilience
 
@@ -150,7 +152,7 @@ router.post('/campaigns/list', async (req, res) => {
          const transformedSB = sbCampaigns.map(c => ({
             campaignId: c.campaignId, name: c.name, campaignType: 'sponsoredBrands',
             targetingType: 'UNKNOWN', state: c.state.toLowerCase(),
-            dailyBudget: c.budget?.amount ?? 0,
+            dailyBudget: c.budget ?? 0, // SB v3 budget is a direct number
             startDate: c.startDate, endDate: c.endDate, bidding: c.bidding,
         }));
         const transformedSD = sdCampaigns.map(c => ({
