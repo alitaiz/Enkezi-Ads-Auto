@@ -36,7 +36,6 @@ export async function getAdsApiAccessToken() {
     }
     
     try {
-        // Using URLSearchParams is a more robust and standard way to build the request body.
         const body = new URLSearchParams({
             grant_type: 'refresh_token',
             refresh_token: ADS_API_REFRESH_TOKEN,
@@ -44,18 +43,19 @@ export async function getAdsApiAccessToken() {
             client_secret: ADS_API_CLIENT_SECRET,
         });
 
-        // Corrected the typo 'httpsagENT' to 'httpsAgent' and simplified the call.
+        // FIX: Added charset=UTF-8 to Content-Type for maximum compatibility, especially with newer APIs like SBv4.
         const response = await axios.post(LWA_TOKEN_URL, body.toString(), {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
         });
 
         // Robust check to ensure a valid token string was received from Amazon.
-        if (!response.data || typeof response.data.access_token !== 'string' || response.data.access_token.trim() === '') {
-            console.error('[Auth] Invalid token response from Amazon LWA:', response.data);
+        const responseData = response.data;
+        if (!responseData || typeof responseData.access_token !== 'string' || responseData.access_token.trim() === '') {
+            console.error('[Auth] Invalid token response from Amazon LWA:', responseData);
             throw new Error('Failed to retrieve a valid access_token from Amazon LWA. The response was malformed.');
         }
         
-        const accessToken = response.data.access_token.trim();
+        const accessToken = responseData.access_token.trim();
         
         adsApiTokenCache = {
             token: accessToken,
@@ -88,8 +88,6 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
             throw new Error("Cannot make Amazon Ads API request: failed to obtain a valid access token.");
         }
         
-        // Safely merge headers, preventing any passed-in 'Authorization' header
-        // from overwriting the one we are carefully constructing.
         const { Authorization, ...otherHeaders } = headers;
         if (Authorization) {
             console.warn('[API Request] An explicit Authorization header was passed to amazonAdsApiRequest and has been ignored to prevent conflicts.');
