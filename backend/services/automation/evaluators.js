@@ -266,7 +266,8 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                 data: { keywordIdFilter: { include: allKeywordIds } },
             });
             (response.keywords || []).forEach(kw => {
-                const entity = performanceData.get(kw.keywordId);
+                // CRITICAL FIX: Convert API response ID (number) to string for map lookup.
+                const entity = performanceData.get(kw.keywordId.toString());
                 if (entity) entity.currentBid = kw.bid;
             });
         }
@@ -276,7 +277,8 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                 data: { targetIdFilter: { include: allTargetIds } },
             });
             (response.targets || []).forEach(t => {
-                const entity = performanceData.get(t.targetId);
+                // CRITICAL FIX: Convert API response ID (number) to string for map lookup.
+                const entity = performanceData.get(t.targetId.toString());
                 if (entity) entity.currentBid = t.bid;
             });
         }
@@ -286,7 +288,8 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                 data: { targetIdFilter: { include: allTargetIds } },
             });
             (response.targets || []).forEach(t => {
-                const entity = performanceData.get(t.targetId);
+                // CRITICAL FIX: Convert API response ID (number) to string for map lookup.
+                const entity = performanceData.get(t.targetId.toString());
                 if (entity) entity.currentBid = t.bid;
             });
         }

@@ -117,11 +117,23 @@ const getSbSdPerformanceData = async (rule, campaignIds, maxLookbackDays, today)
         ? ['sb-traffic', 'sb-conversion'] 
         : ['sd-traffic', 'sd-conversion'];
 
+    // CRITICAL FIX: The query is updated to handle nested JSON structures for SB/SD events.
+    // It now correctly extracts entity IDs and text from objects like `keyword.keywordId`.
     const query = `
         SELECT
             ((event_data->>'timeWindowStart')::timestamptz AT TIME ZONE '${REPORTING_TIMEZONE}')::date AS performance_date,
-            COALESCE(event_data->>'keywordId', event_data->>'targetId') AS entity_id_text,
-            COALESCE(event_data->>'keywordText', event_data->>'targetingExpression') AS entity_text,
+            COALESCE(
+                event_data->'keyword'->>'keywordId', 
+                event_data->'target'->>'targetId', 
+                event_data->>'keywordId', 
+                event_data->>'targetId'
+            ) AS entity_id_text,
+            COALESCE(
+                event_data->'keyword'->>'keywordText', 
+                event_data->'target'->>'value', 
+                event_data->>'keywordText', 
+                event_data->>'targetingExpression'
+            ) AS entity_text,
             (event_data->>'matchType') AS match_type,
             (event_data->>'campaignId') AS campaign_id_text,
             (event_data->>'adGroupId') AS ad_group_id_text,
@@ -133,7 +145,12 @@ const getSbSdPerformanceData = async (rule, campaignIds, maxLookbackDays, today)
         FROM raw_stream_events
         WHERE event_type = ANY($3::text[])
           AND (event_data->>'timeWindowStart')::timestamptz >= ($1::timestamp AT TIME ZONE '${REPORTING_TIMEZONE}')
-          AND COALESCE(event_data->>'keywordId', event_data->>'targetId') IS NOT NULL
+          AND COALESCE(
+                event_data->'keyword'->>'keywordId', 
+                event_data->'target'->>'targetId', 
+                event_data->>'keywordId', 
+                event_data->>'targetId'
+            ) IS NOT NULL
           ${campaignFilter}
         GROUP BY 1, 2, 3, 4, 5, 6
     `;
