@@ -7,7 +7,7 @@ const styles: { [key: string]: React.CSSProperties } = {
   container: { maxWidth: '1200px', margin: '0 auto', padding: '20px' },
   header: { marginBottom: '20px' },
   title: { fontSize: '2rem', margin: 0 },
-  tabs: { display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '20px' },
+  tabs: { display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '20px', flexWrap: 'wrap' },
   tabButton: { padding: '10px 15px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1rem', fontWeight: 500, color: '#555', borderBottom: '3px solid transparent' },
   tabButtonActive: { color: 'var(--primary-color)', borderBottom: '3px solid var(--primary-color)' },
   contentHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' },
@@ -101,37 +101,47 @@ const getDefaultRuleConfig = () => ({
 });
 
 
-const getDefaultBidAdjustmentRule = (): Partial<AutomationRule> => ({
-    name: '',
-    rule_type: 'BID_ADJUSTMENT',
-    config: { ...getDefaultRuleConfig(), conditionGroups: [getDefaultBidAdjustmentGroup()] },
-    scope: { campaignIds: [] },
-    is_active: true,
-});
+const getDefaultRule = (ruleType: AutomationRule['rule_type']): Partial<AutomationRule> => {
+    switch (ruleType) {
+        case 'SEARCH_TERM_AUTOMATION':
+            return {
+                name: '', rule_type: ruleType,
+                config: { ...getDefaultRuleConfig(), conditionGroups: [getDefaultSearchTermGroup()] },
+                scope: { campaignIds: [] }, is_active: true,
+            };
+        case 'BUDGET_ACCELERATION':
+             return {
+                name: '', rule_type: ruleType,
+                config: {
+                    conditionGroups: [getDefaultBudgetAccelerationGroup()],
+                    frequency: { unit: 'minutes', value: 30 },
+                    cooldown: { unit: 'hours', value: 0 }
+                },
+                scope: { campaignIds: [] }, is_active: true,
+            };
+        case 'BID_ADJUSTMENT':
+        default:
+             return {
+                name: '', rule_type: 'BID_ADJUSTMENT',
+                config: { ...getDefaultRuleConfig(), conditionGroups: [getDefaultBidAdjustmentGroup()] },
+                scope: { campaignIds: [] }, is_active: true,
+            };
+    }
+};
 
-const getDefaultSearchTermRule = (): Partial<AutomationRule> => ({
-    name: '',
-    rule_type: 'SEARCH_TERM_AUTOMATION',
-    config: { ...getDefaultRuleConfig(), conditionGroups: [getDefaultSearchTermGroup()] },
-    scope: { campaignIds: [] },
-    is_active: true,
-});
-
-const getDefaultBudgetAccelerationRule = (): Partial<AutomationRule> => ({
-    name: '',
-    rule_type: 'BUDGET_ACCELERATION',
-    config: {
-        conditionGroups: [getDefaultBudgetAccelerationGroup()],
-        frequency: { unit: 'minutes', value: 30 }, // Default to high frequency
-        cooldown: { unit: 'hours', value: 0 } // Cooldown is handled by the daily reset mechanism
-    },
-    scope: { campaignIds: [] },
-    is_active: true,
-});
+const TABS = [
+    { id: 'SP_BID_ADJUSTMENT', label: 'SP Bid Adjustment', type: 'BID_ADJUSTMENT' },
+    { id: 'SB_BID_ADJUSTMENT', label: 'SB Bid Adjustment', type: 'BID_ADJUSTMENT', disabled: true },
+    { id: 'SD_BID_ADJUSTMENT', label: 'SD Bid Adjustment', type: 'BID_ADJUSTMENT', disabled: true },
+    { id: 'SEARCH_TERM_AUTOMATION', label: 'SP Search Term', type: 'SEARCH_TERM_AUTOMATION' },
+    { id: 'BUDGET_ACCELERATION', label: 'SP Budget', type: 'BUDGET_ACCELERATION' },
+    { id: 'HISTORY', label: 'History' },
+    { id: 'GUIDE', label: 'Guide' },
+];
 
 
 export function AutomationView() {
-  const [activeTab, setActiveTab] = useState('bidadjustment');
+  const [activeTabId, setActiveTabId] = useState('SP_BID_ADJUSTMENT');
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState({ rules: true, logs: true });
@@ -164,27 +174,24 @@ export function AutomationView() {
   }, [fetchRules, fetchLogs]);
   
   const handleOpenModal = (rule: AutomationRule | null = null) => {
-    setEditingRule(rule);
+    const activeTabInfo = TABS.find(t => t.id === activeTabId);
+    if (!activeTabInfo || !activeTabInfo.type) return;
+
+    if (rule) {
+        setEditingRule(rule);
+    } else {
+        const defaultRule = getDefaultRule(activeTabInfo.type as AutomationRule['rule_type']);
+        setEditingRule(defaultRule as AutomationRule);
+    }
     setIsModalOpen(true);
   };
 
   const handleDuplicateRule = (ruleToDuplicate: AutomationRule) => {
-    // Create a deep copy to avoid any state mutation issues
     const newRule = JSON.parse(JSON.stringify(ruleToDuplicate));
-
-    // Remove properties that are specific to an existing rule instance
     delete newRule.id;
     delete newRule.last_run_at;
-
-    // Update the name to indicate it's a copy
     newRule.name = `${newRule.name} - Copy`;
-    
-    // BUG FIX: Reset the scope so the duplicated rule isn't automatically
-    // applied to all of the original rule's campaigns.
     newRule.scope = { campaignIds: [] };
-
-    // The modal will now open pre-filled with this data.
-    // When saved, `handleSaveRule` will see it has no 'id' and will perform a 'POST' (create).
     setEditingRule(newRule);
     setIsModalOpen(true);
   };
@@ -201,24 +208,16 @@ export function AutomationView() {
     }
 
     let payload;
-    // For POST (creating a new rule), we send the full object including the
-    // initial (usually empty) scope.
     if (method === 'POST') {
         payload = { ...data, profile_id: profileId };
     } else {
-        // For PUT (updating an existing rule), we ONLY send the fields that can be
-        // edited from the Automation view's modal. This is critical to prevent
-        // overwriting the `scope` property, which is managed exclusively from
-        // the PPC Management view.
         payload = {
             name: data.name,
             config: data.config,
             is_active: data.is_active,
-            // `scope` is intentionally omitted.
-            // `profile_id` and `rule_type` are also omitted as they are immutable.
+            scope: data.scope, // Ensure scope is also updatable
         };
     }
-
 
     await fetch(url, {
       method,
@@ -237,17 +236,8 @@ export function AutomationView() {
       }
   };
 
-  const filteredRules = rules.filter(r => 
-      (activeTab === 'bidadjustment' && r.rule_type === 'BID_ADJUSTMENT') ||
-      (activeTab === 'searchterm' && r.rule_type === 'SEARCH_TERM_AUTOMATION') ||
-      (activeTab === 'budgetacceleration' && r.rule_type === 'BUDGET_ACCELERATION')
-  );
-
-  const ruleTypeTitles: { [key: string]: string } = {
-      bidadjustment: 'Bid Adjustment Rules',
-      searchterm: 'Search Term Automation Rules',
-      budgetacceleration: 'Budget Acceleration Rules'
-  };
+  const activeTab = TABS.find(t => t.id === activeTabId);
+  const filteredRules = rules.filter(r => r.rule_type === activeTab?.type);
 
   return (
     <div style={styles.container}>
@@ -256,28 +246,34 @@ export function AutomationView() {
       </header>
 
       <div style={styles.tabs}>
-        <button style={activeTab === 'bidadjustment' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('bidadjustment')}>Bid Adjustment</button>
-        <button style={activeTab === 'searchterm' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('searchterm')}>Search Term</button>
-        <button style={activeTab === 'budgetacceleration' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('budgetacceleration')}>Budget Acceleration</button>
-        <button style={activeTab === 'history' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('history')}>History</button>
-        <button style={activeTab === 'ruleguide' ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setActiveTab('ruleguide')}>Guide</button>
+        {TABS.map(tab => (
+            <button 
+                key={tab.id}
+                style={activeTabId === tab.id ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} 
+                onClick={() => setActiveTabId(tab.id)}
+                disabled={(tab as any).disabled}
+                title={(tab as any).disabled ? 'Coming Soon' : ''}
+            >
+                {tab.label}
+            </button>
+        ))}
       </div>
       
-      {['bidadjustment', 'searchterm', 'budgetacceleration'].includes(activeTab) && (
+      {activeTab && activeTab.type && (
           <div style={styles.contentHeader}>
-              <h2 style={styles.contentTitle}>{ruleTypeTitles[activeTab]}</h2>
+              <h2 style={styles.contentTitle}>{activeTab.label} Rules</h2>
               <button style={styles.primaryButton} onClick={() => handleOpenModal()}>+ Create New Rule</button>
           </div>
       )}
 
-      {activeTab !== 'history' && activeTab !== 'ruleguide' && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
-      {activeTab === 'history' && <LogsTab logs={logs} loading={loading.logs} />}
-      {activeTab === 'ruleguide' && <RuleGuideContent />}
+      {activeTabId === 'HISTORY' && <LogsTab logs={logs} loading={loading.logs} />}
+      {activeTabId === 'GUIDE' && <RuleGuideContent />}
+      {activeTab?.type && <RulesList rules={filteredRules} onEdit={handleOpenModal} onDelete={handleDeleteRule} onDuplicate={handleDuplicateRule} />}
       
-      {isModalOpen && (
+      {isModalOpen && activeTab?.type && (
           <RuleBuilderModal 
               rule={editingRule} 
-              ruleType={editingRule ? editingRule.rule_type.toLowerCase().replace(/_/g, '') : activeTab}
+              ruleType={editingRule ? editingRule.rule_type : activeTab.type as any}
               onClose={() => setIsModalOpen(false)}
               onSave={handleSaveRule}
           />
@@ -338,13 +334,10 @@ const LogsTab = ({ logs, loading }: { logs: any[], loading: boolean}) => (
     </div>
 );
 
-const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: AutomationRule | null, ruleType: string, onClose: () => void, onSave: (data: any) => void }) => {
+const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: AutomationRule | null, ruleType: AutomationRule['rule_type'], onClose: () => void, onSave: (data: any) => void }) => {
     const [formData, setFormData] = useState<Partial<AutomationRule>>(() => {
         if (rule) return JSON.parse(JSON.stringify(rule));
-        if (ruleType === 'bidadjustment') return getDefaultBidAdjustmentRule();
-        if (ruleType === 'searchterm') return getDefaultSearchTermRule();
-        if (ruleType === 'budgetacceleration') return getDefaultBudgetAccelerationRule();
-        return getDefaultBidAdjustmentRule();
+        return getDefaultRule(ruleType);
     });
 
     const handleConfigChange = (field: string, value: any) => {
@@ -373,11 +366,9 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
     const removeCondition = (groupIndex: number, condIndex: number) => {
          setFormData(prev => {
             const newGroups = JSON.parse(JSON.stringify(prev.config!.conditionGroups));
-            // Don't remove the last condition in a group
             if (newGroups[groupIndex].conditions.length > 1) {
                 newGroups[groupIndex].conditions.splice(condIndex, 1);
             } else if (newGroups.length > 1) {
-                // If it's the last condition, remove the whole group
                 newGroups.splice(groupIndex, 1);
             }
             return { ...prev, config: { ...prev.config!, conditionGroups: newGroups } };
@@ -387,9 +378,9 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
     const addConditionGroup = () => {
         setFormData(prev => {
             let newGroup;
-            if (ruleType === 'bidadjustment') newGroup = getDefaultBidAdjustmentGroup();
-            else if (ruleType === 'searchterm') newGroup = getDefaultSearchTermGroup();
-            else if (ruleType === 'budgetacceleration') newGroup = getDefaultBudgetAccelerationGroup();
+            if (ruleType === 'BID_ADJUSTMENT') newGroup = getDefaultBidAdjustmentGroup();
+            else if (ruleType === 'SEARCH_TERM_AUTOMATION') newGroup = getDefaultSearchTermGroup();
+            else if (ruleType === 'BUDGET_ACCELERATION') newGroup = getDefaultBudgetAccelerationGroup();
             else newGroup = getDefaultBidAdjustmentGroup();
             
             const newGroups = [...prev.config!.conditionGroups, newGroup];
@@ -406,9 +397,9 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
     };
 
     const modalTitle: { [key: string]: string } = {
-        'bidadjustment': 'Edit Bid Adjustment Rule',
-        'searchterm': 'Edit Search Term Rule',
-        'budgetacceleration': 'Edit Budget Acceleration Rule'
+        'BID_ADJUSTMENT': 'Edit Bid Adjustment Rule',
+        'SEARCH_TERM_AUTOMATION': 'Edit Search Term Rule',
+        'BUDGET_ACCELERATION': 'Edit Budget Acceleration Rule'
     };
 
     return (
@@ -468,13 +459,13 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                             min="0"
                                             onChange={e => handleConfigChange('cooldown', { ...formData.config?.cooldown, value: Number(e.target.value) })}
                                             required
-                                            disabled={ruleType === 'budgetacceleration'}
+                                            disabled={ruleType === 'BUDGET_ACCELERATION'}
                                         />
                                         <select
                                             style={{...styles.input, flex: 1}}
                                             value={formData.config?.cooldown?.unit || 'hours'}
                                             onChange={e => handleConfigChange('cooldown', { ...formData.config?.cooldown, unit: e.target.value as any })}
-                                            disabled={ruleType === 'budgetacceleration'}
+                                            disabled={ruleType === 'BUDGET_ACCELERATION'}
                                         >
                                             <option value="minutes">Minute(s)</option>
                                             <option value="hours">Hour(s)</option>
@@ -482,7 +473,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                         </select>
                                     </div>
                                     <p style={{fontSize: '0.8rem', color: '#666', margin: '5px 0 0 0'}}>
-                                        {ruleType === 'budgetacceleration' ? 'Cooldown is handled by the daily reset mechanism.' : 'After acting on an item, wait this long before acting on it again. Set to 0 to disable.'}
+                                        {ruleType === 'BUDGET_ACCELERATION' ? 'Cooldown is handled by the daily reset mechanism.' : 'After acting on an item, wait this long before acting on it again. Set to 0 to disable.'}
                                     </p>
                                 </div>
                             </div>
@@ -517,7 +508,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                     {group.conditions.map((cond, condIndex) => (
                                         <div key={condIndex} style={styles.conditionRow}>
                                            <select style={styles.conditionInput} value={cond.metric} onChange={e => handleConditionChange(groupIndex, condIndex, 'metric', e.target.value)}>
-                                                {ruleType === 'budgetacceleration' ? (
+                                                {ruleType === 'BUDGET_ACCELERATION' ? (
                                                     <>
                                                         <option value="roas">ROAS</option>
                                                         <option value="acos">ACoS</option>
@@ -537,12 +528,12 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                                 )}
                                             </select>
                                             <span style={styles.conditionText}>in last</span>
-                                            {ruleType === 'budgetacceleration' ? (
+                                            {ruleType === 'BUDGET_ACCELERATION' ? (
                                                 <input style={{...styles.conditionInput, width: '60px', textAlign: 'center'}} value="Today" disabled />
                                             ) : (
                                                 <input type="number" min="1" max="90" style={{...styles.conditionInput, width: '60px'}} value={cond.timeWindow} onChange={e => handleConditionChange(groupIndex, condIndex, 'timeWindow', Number(e.target.value))} required />
                                             )}
-                                            <span style={styles.conditionText}>{ruleType !== 'budgetacceleration' && 'days'}</span>
+                                            <span style={styles.conditionText}>{ruleType !== 'BUDGET_ACCELERATION' && 'days'}</span>
                                             <select style={{...styles.conditionInput, width: '60px'}} value={cond.operator} onChange={e => handleConditionChange(groupIndex, condIndex, 'operator', e.target.value)}>
                                                 <option value=">">&gt;</option> <option value="<">&lt;</option> <option value="=">=</option>
                                             </select>
@@ -554,7 +545,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                 
                                      <div style={styles.thenBlock}>
                                         <h4 style={styles.thenHeader}>THEN</h4>
-                                        {ruleType === 'bidadjustment' && (
+                                        {ruleType === 'BID_ADJUSTMENT' && (
                                             <div style={styles.thenGrid}>
                                                 <div style={styles.formGroup}>
                                                     <label style={styles.label}>Action</label>
@@ -591,7 +582,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                                 </div>
                                             </div>
                                         )}
-                                         {ruleType === 'searchterm' && (
+                                         {ruleType === 'SEARCH_TERM_AUTOMATION' && (
                                             <div style={styles.thenGrid}>
                                                  <div style={styles.formGroup}>
                                                     <label style={styles.label}>Action</label>
@@ -606,7 +597,7 @@ const RuleBuilderModal = ({ rule, ruleType, onClose, onSave }: { rule: Automatio
                                                 </div>
                                             </div>
                                         )}
-                                        {ruleType === 'budgetacceleration' && (
+                                        {ruleType === 'BUDGET_ACCELERATION' && (
                                             <>
                                             <div style={styles.thenGrid}>
                                                  <div style={styles.formGroup}>
