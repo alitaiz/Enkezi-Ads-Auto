@@ -110,19 +110,24 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
                 throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for HMAC request.');
             }
             
-            // CRITICAL FIX: The 'X-Amz-Date' header is required for HMAC authentication.
-            // The format must be ISO-8601 "basic format" (YYYYMMDD'T'HHMMSS'Z').
+            // The host header is required for the signature.
+            const host = new URL(ADS_API_ENDPOINT).hostname;
+            finalHeaders['Host'] = host;
+
+            // The 'X-Amz-Date' header is required. Format: YYYYMMDD'T'HHMMSS'Z'.
             const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
             finalHeaders['X-Amz-Date'] = timestamp;
+            
+            // Headers must be included in the 'SignedHeaders' list, sorted alphabetically.
+            const signedHeaders = 'host;x-amz-date';
 
             const requestBody = data ? JSON.stringify(data) : '';
             const stringToSign = `${timestamp}\n${method.toUpperCase()}\n${url}\n${requestBody}`;
             
             const signature = createHmacSignature(ADS_API_SECRET_KEY, stringToSign);
             
-            // Note: The `SignedHeaders` here is a simplified version. For full AWS SigV4, it would be a sorted list.
-            // This implementation is tailored to the specific needs of these Amazon Ads endpoints.
-            finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=x-amz-date, Signature=${signature}`;
+            // Construct the final Authorization header with the corrected SignedHeaders.
+            finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
         } else {
             // Use Bearer Token for all other APIs (SP, SD, etc.)
