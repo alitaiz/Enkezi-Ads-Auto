@@ -98,6 +98,7 @@ export interface AutomationRule {
     id: number;
     name: string;
     rule_type: 'BID_ADJUSTMENT' | 'SEARCH_TERM_AUTOMATION' | 'BUDGET_ACCELERATION';
+    ad_type?: 'SP' | 'SB' | 'SD';
     config: {
         // A rule is composed of one or more condition groups.
         // They are evaluated in order ("first match wins").
