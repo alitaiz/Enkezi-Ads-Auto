@@ -118,7 +118,8 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
             const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
             finalHeaders['X-Amz-Date'] = timestamp;
             
-            // Headers must be included in the 'SignedHeaders' list, sorted alphabetically.
+            // FIX: Headers must be included in the 'SignedHeaders' list, sorted alphabetically.
+            // The 'host' header was missing.
             const signedHeaders = 'host;x-amz-date';
 
             const requestBody = data ? JSON.stringify(data) : '';
