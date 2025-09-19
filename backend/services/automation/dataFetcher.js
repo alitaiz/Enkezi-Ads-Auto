@@ -115,53 +115,37 @@ const getSbSdPerformanceData = async (rule, campaignIds, maxLookbackDays, today)
     const eventTypes = rule.ad_type === 'SB' 
         ? ['sb-traffic', 'sb-conversion'] 
         : ['sd-traffic', 'sd-conversion'];
+    params.push(eventTypes);
 
     const query = `
         SELECT
-            ((event_data->>'timeWindowStart')::timestamptz AT TIME ZONE '${REPORTING_TIMEZONE}')::date AS performance_date,
-            -- More robust entity ID extraction
-            COALESCE(
-                event_data->'keyword'->>'keywordId', 
-                event_data->'target'->>'targetId',
-                event_data->>'keywordId', 
-                event_data->>'targetId',
-                event_data->>'keyword_id',
-                event_data->>'target_id'
-            ) AS entity_id_text,
-            -- More robust entity text extraction
-            COALESCE(
-                event_data->'keyword'->>'keywordText', 
-                event_data->'target'->>'value', 
-                event_data->>'keywordText', 
-                event_data->>'targetingExpression',
-                event_data->>'keyword_text'
-            ) AS entity_text,
-            (event_data->>'matchType') AS match_type,
-            -- More robust campaign and ad group ID extraction
-            COALESCE(event_data->>'campaignId', event_data->>'campaign_id') AS campaign_id_text,
-            COALESCE(event_data->>'adGroupId', event_data->>'ad_group_id') AS ad_group_id_text,
+            ((event_data->>'time_window_start')::timestamptz AT TIME ZONE '${REPORTING_TIMEZONE}')::date AS performance_date,
+            
+            -- Correctly extract entity ID from top-level, snake_case keys
+            COALESCE(event_data->>'keyword_id', event_data->>'target_id') AS entity_id_text,
+
+            -- Correctly extract entity text from top-level, snake_case keys
+            COALESCE(event_data->>'keyword_text', event_data->>'targeting_text') AS entity_text,
+
+            -- Handle both match_type and keyword_type
+            COALESCE(event_data->>'match_type', event_data->>'keyword_type') AS match_type,
+
+            (event_data->>'campaign_id') AS campaign_id_text,
+            (event_data->>'ad_group_id') AS ad_group_id_text,
+
             SUM(CASE WHEN event_type IN ('sb-traffic', 'sd-traffic') THEN (event_data->>'impressions')::bigint ELSE 0 END) AS impressions,
             SUM(CASE WHEN event_type IN ('sb-traffic', 'sd-traffic') THEN (event_data->>'cost')::numeric ELSE 0 END) AS spend,
             SUM(CASE WHEN event_type IN ('sb-traffic', 'sd-traffic') THEN (event_data->>'clicks')::bigint ELSE 0 END) AS clicks,
             SUM(CASE WHEN event_type IN ('sb-conversion', 'sd-conversion') THEN (event_data->>'sales')::numeric ELSE 0 END) AS sales,
             SUM(CASE WHEN event_type IN ('sb-conversion', 'sd-conversion') THEN (event_data->>'purchases')::bigint ELSE 0 END) AS orders
         FROM raw_stream_events
-        WHERE event_type = ANY($3::text[])
-          AND (event_data->>'timeWindowStart')::timestamptz >= ($1::timestamp AT TIME ZONE '${REPORTING_TIMEZONE}')
-          -- More robust entity ID existence check
-          AND COALESCE(
-                event_data->'keyword'->>'keywordId', 
-                event_data->'target'->>'targetId',
-                event_data->>'keywordId', 
-                event_data->>'targetId',
-                event_data->>'keyword_id',
-                event_data->>'target_id'
-            ) IS NOT NULL
-          -- More robust campaign filter
-          AND COALESCE(event_data->>'campaignId', event_data->>'campaign_id') = ANY($2)
-        GROUP BY 1, 2, 3, 4, 5, 6
+        WHERE 
+            event_type = ANY($3::text[])
+            AND (event_data->>'time_window_start')::timestamptz >= ($1::timestamp AT TIME ZONE '${REPORTING_TIMEZONE}')
+            AND (event_data->>'campaign_id') = ANY($2::text[])
+            AND COALESCE(event_data->>'keyword_id', event_data->>'target_id') IS NOT NULL
+        GROUP BY 1, 2, 3, 4, 5, 6;
     `;
-    params.push(eventTypes);
 
     const { rows } = await pool.query(query, params);
 
