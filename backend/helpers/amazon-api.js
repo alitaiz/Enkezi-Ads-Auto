@@ -100,25 +100,29 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
         }
 
         // --- DYNAMIC AUTHENTICATION LOGIC ---
-        if (url.startsWith('/sb/v4/')) {
-            // Use HMAC Signature for Sponsored Brands v4
+        // Check if the URL matches the patterns requiring HMAC signature authentication.
+        const requiresHmac = url.startsWith('/sb/v4/') || url.startsWith('/portfolios');
+
+        if (requiresHmac) {
+            // Use HMAC Signature for Sponsored Brands v4 and Portfolios
             const { ADS_API_ACCESS_KEY, ADS_API_SECRET_KEY } = process.env;
             if (!ADS_API_ACCESS_KEY || !ADS_API_SECRET_KEY) {
-                throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for SBv4 request.');
+                throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for HMAC request.');
             }
             
-            // CRITICAL FIX: The 'Date' header is required for SBv4 HMAC authentication.
-            finalHeaders['Date'] = new Date().toUTCString();
-            
+            // CRITICAL FIX: The 'X-Amz-Date' header is required for HMAC authentication.
+            // The format must be ISO-8601 "basic format" (YYYYMMDD'T'HHMMSS'Z').
             const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
-            finalHeaders['x-amz-ads-timestamp'] = timestamp;
+            finalHeaders['X-Amz-Date'] = timestamp;
 
             const requestBody = data ? JSON.stringify(data) : '';
             const stringToSign = `${timestamp}\n${method.toUpperCase()}\n${url}\n${requestBody}`;
             
             const signature = createHmacSignature(ADS_API_SECRET_KEY, stringToSign);
             
-            finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=x-amz-ads-timestamp, Signature=${signature}`;
+            // Note: The `SignedHeaders` here is a simplified version. For full AWS SigV4, it would be a sorted list.
+            // This implementation is tailored to the specific needs of these Amazon Ads endpoints.
+            finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=x-amz-date, Signature=${signature}`;
 
         } else {
             // Use Bearer Token for all other APIs (SP, SD, etc.)
