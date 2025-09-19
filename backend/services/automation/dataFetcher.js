@@ -106,6 +106,71 @@ const getBidAdjustmentPerformanceData = async (rule, campaignIds, maxLookbackDay
     return performanceMap;
 };
 
+const getSbSdPerformanceData = async (rule, campaignIds, maxLookbackDays, today) => {
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - (maxLookbackDays - 1));
+    const startDateStr = startDate.toISOString().split('T')[0];
+
+    const params = [startDateStr, campaignIds.map(id => String(id))];
+    const campaignFilter = `AND (event_data->>'campaignId') = ANY($2)`;
+    const eventTypes = rule.ad_type === 'SB' 
+        ? ['sb-traffic', 'sb-conversion'] 
+        : ['sd-traffic', 'sd-conversion'];
+
+    const query = `
+        SELECT
+            ((event_data->>'timeWindowStart')::timestamptz AT TIME ZONE '${REPORTING_TIMEZONE}')::date AS performance_date,
+            COALESCE(event_data->>'keywordId', event_data->>'targetId') AS entity_id_text,
+            COALESCE(event_data->>'keywordText', event_data->>'targetingExpression') AS entity_text,
+            (event_data->>'matchType') AS match_type,
+            (event_data->>'campaignId') AS campaign_id_text,
+            (event_data->>'adGroupId') AS ad_group_id_text,
+            SUM(CASE WHEN event_type IN ('sb-traffic', 'sd-traffic') THEN (event_data->>'impressions')::bigint ELSE 0 END) AS impressions,
+            SUM(CASE WHEN event_type IN ('sb-traffic', 'sd-traffic') THEN (event_data->>'cost')::numeric ELSE 0 END) AS spend,
+            SUM(CASE WHEN event_type IN ('sb-traffic', 'sd-traffic') THEN (event_data->>'clicks')::bigint ELSE 0 END) AS clicks,
+            SUM(CASE WHEN event_type IN ('sb-conversion', 'sd-conversion') THEN (event_data->>'sales')::numeric ELSE 0 END) AS sales,
+            SUM(CASE WHEN event_type IN ('sb-conversion', 'sd-conversion') THEN (event_data->>'purchases')::bigint ELSE 0 END) AS orders
+        FROM raw_stream_events
+        WHERE event_type = ANY($3::text[])
+          AND (event_data->>'timeWindowStart')::timestamptz >= ($1::timestamp AT TIME ZONE '${REPORTING_TIMEZONE}')
+          AND COALESCE(event_data->>'keywordId', event_data->>'targetId') IS NOT NULL
+          ${campaignFilter}
+        GROUP BY 1, 2, 3, 4, 5, 6
+    `;
+    params.push(eventTypes);
+
+    const { rows } = await pool.query(query, params);
+
+    const performanceMap = new Map();
+    for (const row of rows) {
+        const key = row.entity_id_text;
+        if (!key) continue;
+
+        if (!performanceMap.has(key)) {
+             performanceMap.set(key, {
+                entityId: row.entity_id_text,
+                entityType: ['BROAD', 'PHRASE', 'EXACT'].includes(row.match_type) ? 'keyword' : 'target',
+                entityText: row.entity_text,
+                matchType: row.match_type,
+                campaignId: row.campaign_id_text,
+                adGroupId: row.ad_group_id_text,
+                dailyData: []
+            });
+        }
+        
+        performanceMap.get(key).dailyData.push({
+            date: new Date(row.performance_date),
+            impressions: parseInt(row.impressions || 0, 10),
+            spend: parseFloat(row.spend || 0),
+            sales: parseFloat(row.sales || 0),
+            clicks: parseInt(row.clicks || 0, 10),
+            orders: parseInt(row.orders || 0, 10),
+        });
+    }
+    return performanceMap;
+};
+
+
 /**
  * Fetches performance data for SEARCH_TERM_AUTOMATION rules.
  * Exclusively uses historical Search Term Report data with a 2-day delay.
@@ -275,7 +340,9 @@ export const getPerformanceData = async (rule, campaignIds) => {
     const today = new Date(todayStr);
 
     let performanceMap;
-    if (rule.rule_type === 'BID_ADJUSTMENT') {
+    if (rule.rule_type === 'BID_ADJUSTMENT' && (rule.ad_type === 'SB' || rule.ad_type === 'SD')) {
+        performanceMap = await getSbSdPerformanceData(rule, campaignIds, maxLookbackDays, today);
+    } else if (rule.rule_type === 'BID_ADJUSTMENT') {
         performanceMap = await getBidAdjustmentPerformanceData(rule, campaignIds, maxLookbackDays, today);
     } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
         performanceMap = await getSearchTermAutomationPerformanceData(rule, campaignIds, maxLookbackDays, today);

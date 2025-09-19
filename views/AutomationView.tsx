@@ -418,12 +418,6 @@ const RuleBuilderModal = ({ rule, modalTitle, onClose, onSave }: { rule: Automat
             <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
                 <form style={styles.form} onSubmit={e => { e.preventDefault(); onSave(formData); }}>
                     <h2 style={styles.modalHeader}>{modalTitle}</h2>
-
-                    {(ad_type === 'SB' || ad_type === 'SD') && (
-                        <div style={{...styles.infoBox, backgroundColor: '#fffbe6', border: '1px solid #ffe58f', color: '#d46b08'}}>
-                            ⚠️ Please note: Automation for Sponsored Brands and Sponsored Display is currently in beta. Rules can be created, but they will not be executed by the engine yet.
-                        </div>
-                    )}
                     
                     <div style={styles.formGroup}>
                         <label style={styles.label}>Rule Name</label>

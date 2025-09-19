@@ -1,7 +1,7 @@
 // backend/services/automation/ruleProcessor.js
 import pool from '../../db.js';
 import { getPerformanceData } from './dataFetcher.js';
-import { evaluateBidAdjustmentRule, evaluateSearchTermAutomationRule, evaluateBudgetAccelerationRule } from './evaluators.js';
+import { evaluateBidAdjustmentRule, evaluateSearchTermAutomationRule, evaluateBudgetAccelerationRule, evaluateSbSdBidAdjustmentRule } from './evaluators.js';
 import { isRuleDue, logAction } from './utils.js';
 import { amazonAdsApiRequest } from '../../helpers/amazon-api.js';
 
@@ -42,12 +42,10 @@ const processRule = async (rule) => {
         let result;
         if (rule.rule_type === 'BID_ADJUSTMENT') {
             if (rule.ad_type === 'SB' || rule.ad_type === 'SD') {
-                console.log(`[RulesEngine] Skipping SB/SD Bid Adjustment rule "${rule.name}" as it is not yet implemented.`);
-                await logAction(rule, 'NO_ACTION', 'SB/SD rule execution is not yet implemented.', {});
-                await pool.query('UPDATE automation_rules SET last_run_at = NOW() WHERE id = $1', [rule.id]);
-                return;
+                result = await evaluateSbSdBidAdjustmentRule(rule, performanceData, throttledEntities);
+            } else {
+                result = await evaluateBidAdjustmentRule(rule, performanceData, throttledEntities);
             }
-            result = await evaluateBidAdjustmentRule(rule, performanceData, throttledEntities);
         } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
             result = await evaluateSearchTermAutomationRule(rule, performanceData, throttledEntities);
         } else if (rule.rule_type === 'BUDGET_ACCELERATION') {

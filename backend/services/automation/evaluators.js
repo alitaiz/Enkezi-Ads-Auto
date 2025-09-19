@@ -247,6 +247,129 @@ export const evaluateBidAdjustmentRule = async (rule, performanceData, throttled
     };
 };
 
+export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throttledEntities) => {
+    const actionsByCampaign = {};
+    const sbKeywordsToUpdate = [];
+    const sbTargetsToUpdate = [];
+    const sdTargetsToUpdate = [];
+    const referenceDate = new Date(getLocalDateString('America/Los_Angeles'));
+    const allEntities = Array.from(performanceData.values());
+
+    // Fetch current bids
+    const allKeywordIds = allEntities.filter(e => e.entityType === 'keyword').map(e => e.entityId);
+    const allTargetIds = allEntities.filter(e => e.entityType === 'target').map(e => e.entityId);
+
+    try {
+        if (rule.ad_type === 'SB' && allKeywordIds.length > 0) {
+            const response = await amazonAdsApiRequest({
+                method: 'post', url: '/sb/keywords/list', profileId: rule.profile_id,
+                data: { keywordIdFilter: { include: allKeywordIds } },
+            });
+            (response.keywords || []).forEach(kw => {
+                const entity = performanceData.get(kw.keywordId);
+                if (entity) entity.currentBid = kw.bid;
+            });
+        }
+        if (rule.ad_type === 'SB' && allTargetIds.length > 0) {
+            const response = await amazonAdsApiRequest({
+                method: 'post', url: '/sb/targets/list', profileId: rule.profile_id,
+                data: { targetIdFilter: { include: allTargetIds } },
+            });
+            (response.targets || []).forEach(t => {
+                const entity = performanceData.get(t.targetId);
+                if (entity) entity.currentBid = t.bid;
+            });
+        }
+        if (rule.ad_type === 'SD' && allTargetIds.length > 0) {
+             const response = await amazonAdsApiRequest({
+                method: 'post', url: '/sd/targets/list', profileId: rule.profile_id,
+                data: { targetIdFilter: { include: allTargetIds } },
+            });
+            (response.targets || []).forEach(t => {
+                const entity = performanceData.get(t.targetId);
+                if (entity) entity.currentBid = t.bid;
+            });
+        }
+    } catch (e) {
+        console.error(`[RulesEngine] Failed to fetch current bids for ${rule.ad_type} rule.`, e);
+    }
+    
+    // Evaluate and collect actions
+    for (const entity of allEntities) {
+        if (throttledEntities.has(entity.entityId) || typeof entity.currentBid !== 'number') continue;
+        
+        for (const group of rule.config.conditionGroups) {
+            // ... (condition evaluation logic is the same as evaluateBidAdjustmentRule)
+            let allConditionsMet = true;
+            const evaluatedMetrics = [];
+            for (const condition of group.conditions) {
+                const metrics = calculateMetricsForWindow(entity.dailyData, condition.timeWindow, referenceDate);
+                const metricValue = metrics[condition.metric];
+                let conditionValue = condition.value;
+                if (condition.metric === 'acos') conditionValue /= 100;
+                
+                evaluatedMetrics.push({ metric: condition.metric, timeWindow: condition.timeWindow, value: metricValue, condition: `${condition.operator} ${condition.value}` });
+
+                if (!checkCondition(metricValue, condition.operator, conditionValue)) {
+                    allConditionsMet = false;
+                    break;
+                }
+            }
+
+            if (allConditionsMet) {
+                const { type, value, minBid, maxBid } = group.action;
+                if (type === 'adjustBidPercent') {
+                    let newBid = entity.currentBid * (1 + (value / 100));
+                    newBid = Math.max(0.02, parseFloat(newBid.toFixed(2)));
+                    if (typeof minBid === 'number') newBid = Math.max(minBid, newBid);
+                    if (typeof maxBid === 'number') newBid = Math.min(maxBid, newBid);
+                    
+                    if (newBid !== entity.currentBid) {
+                        const campaignId = entity.campaignId;
+                        if (!actionsByCampaign[campaignId]) actionsByCampaign[campaignId] = { changes: [], newNegatives: [] };
+                        
+                        actionsByCampaign[campaignId].changes.push({
+                           entityType: entity.entityType, entityId: entity.entityId, entityText: entity.entityText,
+                           oldBid: entity.currentBid, newBid, triggeringMetrics: evaluatedMetrics
+                        });
+
+                        if (rule.ad_type === 'SB') {
+                            if (entity.entityType === 'keyword') sbKeywordsToUpdate.push({ keywordId: entity.entityId, bid: newBid });
+                            else sbTargetsToUpdate.push({ targetId: entity.entityId, bid: newBid });
+                        } else if (rule.ad_type === 'SD') {
+                            sdTargetsToUpdate.push({ targetId: entity.entityId, bid: newBid });
+                        }
+                    }
+                }
+                break; // First match wins
+            }
+        }
+    }
+
+    // Apply updates
+    if (sbKeywordsToUpdate.length > 0) {
+        await amazonAdsApiRequest({ method: 'put', url: '/sb/keywords', profileId: rule.profile_id, data: { keywords: sbKeywordsToUpdate } });
+    }
+    if (sbTargetsToUpdate.length > 0) {
+        await amazonAdsApiRequest({ method: 'put', url: '/sb/targets', profileId: rule.profile_id, data: { targets: sbTargetsToUpdate } });
+    }
+    if (sdTargetsToUpdate.length > 0) {
+        await amazonAdsApiRequest({ method: 'put', url: '/sd/targets', profileId: rule.profile_id, data: { targets: sdTargetsToUpdate } });
+    }
+
+    const totalChanges = sbKeywordsToUpdate.length + sbTargetsToUpdate.length + sdTargetsToUpdate.length;
+    return {
+        summary: `Adjusted bids for ${totalChanges} ${rule.ad_type} target(s)/keyword(s).`,
+        details: { actions_by_campaign: actionsByCampaign },
+        actedOnEntities: [
+            ...sbKeywordsToUpdate.map(k => k.keywordId), 
+            ...sbTargetsToUpdate.map(t => t.targetId),
+            ...sdTargetsToUpdate.map(t => t.targetId)
+        ]
+    };
+};
+
+
 export const evaluateSearchTermAutomationRule = async (rule, performanceData, throttledEntities) => {
     const negativeKeywordsToCreate = [];
     const negativeTargetsToCreate = [];
