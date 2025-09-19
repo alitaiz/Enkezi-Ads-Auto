@@ -107,6 +107,9 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
                 throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for SBv4 request.');
             }
             
+            // CRITICAL FIX: The 'Date' header is required for SBv4 HMAC authentication.
+            finalHeaders['Date'] = new Date().toUTCString();
+            
             const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
             finalHeaders['x-amz-ads-timestamp'] = timestamp;
 
