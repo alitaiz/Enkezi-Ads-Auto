@@ -2,6 +2,7 @@
 import axios from 'axios';
 import https from 'https';
 import { URLSearchParams } from 'url';
+import crypto from 'crypto';
 
 const LWA_TOKEN_URL = 'https://api.amazon.com/auth/o2/token';
 const ADS_API_ENDPOINT = 'https://advertising-api.amazon.com';
@@ -10,6 +11,18 @@ const ADS_API_ENDPOINT = 'https://advertising-api.amazon.com';
 let adsApiTokenCache = {
     token: null,
     expiresAt: 0,
+};
+
+/**
+ * Creates an HMAC-SHA256 signature for SBv4 API requests.
+ * @param {string} secretKey - The secret key for signing.
+ * @param {string} stringToSign - The canonical request string.
+ * @returns {string} The hexadecimal signature.
+ */
+const createHmacSignature = (secretKey, stringToSign) => {
+    const hmac = crypto.createHmac('sha256', secretKey);
+    hmac.update(stringToSign, 'utf8');
+    return hmac.digest('hex');
 };
 
 /**
@@ -43,12 +56,10 @@ export async function getAdsApiAccessToken() {
             client_secret: ADS_API_CLIENT_SECRET,
         });
 
-        // FIX: Added charset=UTF-8 to Content-Type for maximum compatibility, especially with newer APIs like SBv4.
         const response = await axios.post(LWA_TOKEN_URL, body.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
         });
 
-        // Robust check to ensure a valid token string was received from Amazon.
         const responseData = response.data;
         if (!responseData || typeof responseData.access_token !== 'string' || responseData.access_token.trim() === '') {
             console.error('[Auth] Invalid token response from Amazon LWA:', responseData);
@@ -59,7 +70,6 @@ export async function getAdsApiAccessToken() {
         
         adsApiTokenCache = {
             token: accessToken,
-            // Cache for 55 minutes (token is valid for 60 minutes)
             expiresAt: Date.now() + 55 * 60 * 1000,
         };
 
@@ -67,7 +77,6 @@ export async function getAdsApiAccessToken() {
         return adsApiTokenCache.token;
 
     } catch (error) {
-        // Clear the cache on a failed refresh attempt.
         adsApiTokenCache = { token: null, expiresAt: 0 };
         const errorMessage = error.response?.data?.error_description || error.response?.data?.message || error.message;
         console.error("[Auth] Error refreshing Amazon Ads API access token:", errorMessage);
@@ -77,32 +86,46 @@ export async function getAdsApiAccessToken() {
 
 /**
  * A wrapper for making authenticated requests to the Amazon Ads API.
- * This function is now more robust, guarding against invalid tokens and header overwrites.
+ * It now intelligently switches between Bearer token and HMAC-SHA256 signature auth.
  */
 export async function amazonAdsApiRequest({ method, url, profileId, data, params, headers = {} }) {
     try {
-        const accessToken = await getAdsApiAccessToken();
-
-        // Guard against falsy tokens to prevent malformed Authorization headers.
-        if (!accessToken) {
-            throw new Error("Cannot make Amazon Ads API request: failed to obtain a valid access token.");
-        }
-        
-        const { Authorization, ...otherHeaders } = headers;
-        if (Authorization) {
-            console.warn('[API Request] An explicit Authorization header was passed to amazonAdsApiRequest and has been ignored to prevent conflicts.');
-        }
-
         const finalHeaders = {
             'Amazon-Advertising-API-ClientId': process.env.ADS_API_CLIENT_ID,
-            'Authorization': `Bearer ${accessToken}`, // This is now guaranteed to be safe.
-            ...otherHeaders
+            ...headers
         };
-
+        
         if (profileId) {
             finalHeaders['Amazon-Advertising-API-Scope'] = profileId;
         }
 
+        // --- DYNAMIC AUTHENTICATION LOGIC ---
+        if (url.startsWith('/sb/v4/')) {
+            // Use HMAC Signature for Sponsored Brands v4
+            const { ADS_API_ACCESS_KEY, ADS_API_SECRET_KEY } = process.env;
+            if (!ADS_API_ACCESS_KEY || !ADS_API_SECRET_KEY) {
+                throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for SBv4 request.');
+            }
+            
+            const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
+            finalHeaders['x-amz-ads-timestamp'] = timestamp;
+
+            const requestBody = data ? JSON.stringify(data) : '';
+            const stringToSign = `${timestamp}\n${method.toUpperCase()}\n${url}\n${requestBody}`;
+            
+            const signature = createHmacSignature(ADS_API_SECRET_KEY, stringToSign);
+            
+            finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=x-amz-ads-timestamp, Signature=${signature}`;
+
+        } else {
+            // Use Bearer Token for all other APIs (SP, SD, etc.)
+            const accessToken = await getAdsApiAccessToken();
+            if (!accessToken) {
+                throw new Error("Cannot make API request: failed to obtain a valid access token.");
+            }
+            finalHeaders['Authorization'] = `Bearer ${accessToken}`;
+        }
+        
         const response = await axios({
             method,
             url: `${ADS_API_ENDPOINT}${url}`,
