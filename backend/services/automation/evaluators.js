@@ -335,7 +335,7 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                         
                         actionsByCampaign[campaignId].changes.push({
                            entityType: entity.entityType, entityId: entity.entityId, entityText: entity.entityText,
-                           oldBid: entity.currentBid, newBid, triggeringMetrics: evaluatedMetrics
+                           oldBid: entity.currentBid, newBid, triggeringMetrics: evaluatedMetrics, campaignId: campaignId
                         });
 
                         if (rule.ad_type === 'SB') {
@@ -351,34 +351,84 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
         }
     }
 
+    const successfulEntityIds = new Set();
+    const failedUpdates = [];
+
+    // --- Process API calls and collect results ---
     if (sbKeywordsToUpdate.length > 0) {
-        await amazonAdsApiRequest({ 
-            method: 'put', url: '/sb/keywords', profileId: rule.profile_id, 
-            data: sbKeywordsToUpdate
-        });
+        try {
+            const response = await amazonAdsApiRequest({ method: 'put', url: '/sb/keywords', profileId: rule.profile_id, data: sbKeywordsToUpdate });
+            if (response && Array.isArray(response)) {
+                response.forEach(result => {
+                    if (result.code === 'SUCCESS') {
+                        successfulEntityIds.add(result.keywordId.toString());
+                    } else {
+                        const failure = { entityId: result.keywordId, entityType: 'SB Keyword', code: result.code, details: result.details };
+                        failedUpdates.push(failure);
+                        console.warn(`[RulesEngine] Failed to update SB keyword ${result.keywordId} for rule "${rule.name}". Reason: ${result.details} (Code: ${result.code})`);
+                    }
+                });
+            }
+        } catch (e) { console.error('[RulesEngine] API call failed for PUT /sb/keywords.', e); }
     }
     if (sbTargetsToUpdate.length > 0) {
-        await amazonAdsApiRequest({ 
-            method: 'put', url: '/sb/targets', profileId: rule.profile_id, 
-            data: sbTargetsToUpdate
-        });
+        try {
+            const response = await amazonAdsApiRequest({ method: 'put', url: '/sb/targets', profileId: rule.profile_id, data: sbTargetsToUpdate });
+            if (response && Array.isArray(response)) {
+                response.forEach(result => {
+                    if (result.code === 'SUCCESS') {
+                        successfulEntityIds.add(result.targetId.toString());
+                    } else {
+                        const failure = { entityId: result.targetId, entityType: 'SB Target', code: result.code, details: result.details };
+                        failedUpdates.push(failure);
+                        console.warn(`[RulesEngine] Failed to update SB target ${result.targetId} for rule "${rule.name}". Reason: ${result.details} (Code: ${result.code})`);
+                    }
+                });
+            }
+        } catch (e) { console.error('[RulesEngine] API call failed for PUT /sb/targets.', e); }
     }
     if (sdTargetsToUpdate.length > 0) {
-        await amazonAdsApiRequest({ 
-            method: 'put', url: '/sd/targets', profileId: rule.profile_id, 
-            data: { targets: sdTargetsToUpdate } 
-        });
+        try {
+            const response = await amazonAdsApiRequest({ method: 'put', url: '/sd/targets', profileId: rule.profile_id, data: { targets: sdTargetsToUpdate } });
+            if (response && Array.isArray(response.targets)) {
+                response.targets.forEach(result => {
+                    if (result.code === 'SUCCESS') {
+                        successfulEntityIds.add(result.targetId.toString());
+                    } else {
+                        const failure = { entityId: result.targetId, entityType: 'SD Target', code: result.code, details: result.details };
+                        failedUpdates.push(failure);
+                        console.warn(`[RulesEngine] Failed to update SD target ${result.targetId} for rule "${rule.name}". Reason: ${result.details} (Code: ${result.code})`);
+                    }
+                });
+            }
+        } catch (e) { console.error('[RulesEngine] API call failed for PUT /sd/targets.', e); }
     }
 
-    const totalChanges = sbKeywordsToUpdate.length + sbTargetsToUpdate.length + sdTargetsToUpdate.length;
+    // --- Filter original actions to only include successful changes ---
+    const finalActionsByCampaign = {};
+    for (const campaignId in actionsByCampaign) {
+        const campaignActions = actionsByCampaign[campaignId];
+        const successfulChanges = campaignActions.changes.filter(change => successfulEntityIds.has(change.entityId.toString()));
+        
+        if (successfulChanges.length > 0) {
+            finalActionsByCampaign[campaignId] = {
+                ...campaignActions,
+                changes: successfulChanges,
+                failures: failedUpdates.filter(f => {
+                    const originalChange = campaignActions.changes.find(c => c.entityId.toString() === f.entityId.toString());
+                    return !!originalChange; // Check if the failure belongs to this campaign
+                })
+            };
+        }
+    }
+    
+    const totalChanges = successfulEntityIds.size;
+    const actedOnEntities = Array.from(successfulEntityIds);
+
     return {
-        summary: `Adjusted bids for ${totalChanges} ${rule.ad_type} target(s)/keyword(s).`,
-        details: { actions_by_campaign: actionsByCampaign },
-        actedOnEntities: [
-            ...sbKeywordsToUpdate.map(k => k.keywordId), 
-            ...sbTargetsToUpdate.map(t => t.targetId),
-            ...sdTargetsToUpdate.map(t => t.targetId)
-        ]
+        summary: `Successfully adjusted bids for ${totalChanges} ${rule.ad_type} target(s)/keyword(s). ${failedUpdates.length > 0 ? `${failedUpdates.length} failed.` : ''}`.trim(),
+        details: { actions_by_campaign: finalActionsByCampaign },
+        actedOnEntities
     };
 };
 
