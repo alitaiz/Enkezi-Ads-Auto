@@ -14,28 +14,6 @@ let adsApiTokenCache = {
 };
 
 /**
- * Creates an HMAC-SHA256 signature for SBv4 API requests.
- * @param {string} secretKey - The secret key for signing.
- * @param {string} stringToSign - The canonical request string.
- * @returns {string} The hexadecimal signature.
- */
-const createHmacSignature = (secretKey, stringToSign) => {
-    const hmac = crypto.createHmac('sha256', secretKey);
-    hmac.update(stringToSign, 'utf8');
-    return hmac.digest('hex');
-};
-
-/**
- * Creates a SHA256 hash of a given string.
- * @param {string} data - The string to hash.
- * @returns {string} The hexadecimal hash.
- */
-const createSha256Hash = (data) => {
-    return crypto.createHash('sha256').update(data, 'utf8').digest('hex');
-};
-
-
-/**
  * Retrieves a valid LWA access token, using a cache to avoid unnecessary refreshes.
  * Now includes a `forceRefresh` option to bypass the cache.
  * @param {boolean} forceRefresh - If true, bypasses the cache and fetches a new token.
@@ -115,86 +93,14 @@ async function _buildAndSendRequest(method, url, profileId, data, params, header
         finalHeaders['Amazon-Advertising-API-Scope'] = profileId;
     }
 
-    const httpMethod = method.toLowerCase();
-    // FIX: Per user feedback and documentation, Sponsored Brands v4 campaign management
-    // endpoints use standard OAuth 2.0 Bearer tokens, not HMAC signatures. This
-    // flag is now hardcoded to false to enforce the correct authentication method.
-    const requiresHmac = false;
-
-    if (requiresHmac) {
-        const { ADS_API_ACCESS_KEY, ADS_API_SECRET_KEY } = process.env;
-        if (!ADS_API_ACCESS_KEY || !ADS_API_SECRET_KEY) {
-            throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for HMAC request.');
-        }
-        
-        const accessToken = await getAdsApiAccessToken(forceTokenRefresh);
-        const host = new URL(ADS_API_ENDPOINT).hostname;
-        const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
-
-        finalHeaders['Host'] = host;
-        finalHeaders['X-Amz-Date'] = timestamp;
-        finalHeaders['X-Amz-Access-Token'] = accessToken;
-        
-        const headersToSign = {
-            'host': host,
-            'x-amz-access-token': accessToken,
-            'x-amz-date': timestamp
-        };
-        
-        const contentType = finalHeaders['Content-Type'] || finalHeaders['content-type'];
-        if ((httpMethod === 'post' || httpMethod === 'put') && contentType) {
-            headersToSign['content-type'] = contentType;
-        }
-
-        const sortedHeaderKeys = Object.keys(headersToSign).sort();
-        const canonicalHeaders = sortedHeaderKeys.map(key => `${key}:${headersToSign[key]}`).join('\n') + '\n';
-        const signedHeaders = sortedHeaderKeys.join(';');
-
-        const canonicalUri = url;
-        let canonicalQueryString = '';
-        if (params) {
-            canonicalQueryString = Object.keys(params).sort().map(key => 
-                `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`
-            ).join('&');
-        }
-        const requestBody = data ? JSON.stringify(data) : '';
-        const hashedPayload = createSha256Hash(requestBody);
-
-        const canonicalRequest = [
-            method.toUpperCase(),
-            canonicalUri,
-            canonicalQueryString,
-            canonicalHeaders,
-            signedHeaders,
-            hashedPayload
-        ].join('\n');
-
-        // Step 1: Hash the canonical request.
-        const hashedCanonicalRequest = createSha256Hash(canonicalRequest);
-        
-        // Define the algorithm string.
-        const ALGORITHM = 'AMZ-ADS-HMAC-SHA256-20220101';
-
-        // Step 2: Construct the correct string to sign according to Amazon's v4 spec.
-        const stringToSign = [
-            ALGORITHM,
-            timestamp,
-            hashedCanonicalRequest
-        ].join('\n');
-        
-        // Step 3: Create the signature using the correct string to sign.
-        const signature = createHmacSignature(ADS_API_SECRET_KEY, stringToSign);
-        
-        // Step 4: Assemble the final Authorization header.
-        finalHeaders['Authorization'] = `${ALGORITHM} Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-    } else {
-        const accessToken = await getAdsApiAccessToken(forceTokenRefresh);
-        if (!accessToken) {
-            throw new Error("Cannot make API request: failed to obtain a valid access token.");
-        }
-        finalHeaders['Authorization'] = `Bearer ${accessToken}`;
+    // Per current Amazon Ads API documentation (v3/v4), all campaign management endpoints
+    // use standard OAuth 2.0 Bearer token authentication. Legacy HMAC signature
+    // logic has been removed to enforce the correct authentication method for all requests.
+    const accessToken = await getAdsApiAccessToken(forceTokenRefresh);
+    if (!accessToken) {
+        throw new Error("Cannot make API request: failed to obtain a valid access token.");
     }
+    finalHeaders['Authorization'] = `Bearer ${accessToken}`;
     
     return axios({
         method,
