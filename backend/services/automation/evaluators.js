@@ -255,32 +255,37 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
     const referenceDate = new Date(getLocalDateString('America/Los_Angeles'));
     const allEntities = Array.from(performanceData.values());
 
-    // Fetch current bids
     const allKeywordIds = allEntities.filter(e => e.entityType === 'keyword').map(e => e.entityId);
     const allTargetIds = allEntities.filter(e => e.entityType === 'target').map(e => e.entityId);
 
     try {
         if (rule.ad_type === 'SB' && allKeywordIds.length > 0) {
             const response = await amazonAdsApiRequest({
-                method: 'post', url: '/sb/v4/keywords/list', profileId: rule.profile_id,
-                data: { keywordIdFilter: { include: allKeywordIds } },
-                headers: { 'Content-Type': 'application/vnd.sbkeywords.v4+json', 'Accept': 'application/vnd.sbkeywords.v4+json' }
+                method: 'get',
+                url: '/sb/keywords',
+                profileId: rule.profile_id,
+                params: { keywordIdFilter: allKeywordIds.join(',') },
             });
-            (response.keywords || []).forEach(kw => {
-                const entity = performanceData.get(kw.keywordId.toString());
-                if (entity) entity.currentBid = kw.bid;
-            });
+            if (Array.isArray(response)) {
+                response.forEach(kw => {
+                    const entity = performanceData.get(kw.keywordId.toString());
+                    if (entity) entity.currentBid = kw.bid;
+                });
+            }
         }
         if (rule.ad_type === 'SB' && allTargetIds.length > 0) {
             const response = await amazonAdsApiRequest({
-                method: 'post', url: '/sb/v4/targets/list', profileId: rule.profile_id,
-                data: { targetIdFilter: { include: allTargetIds } },
-                headers: { 'Content-Type': 'application/vnd.sbtargets.v4+json', 'Accept': 'application/vnd.sbtargets.v4+json' }
+                method: 'get',
+                url: '/sb/targets',
+                profileId: rule.profile_id,
+                params: { targetIdFilter: allTargetIds.join(',') },
             });
-            (response.targets || []).forEach(t => {
-                const entity = performanceData.get(t.targetId.toString());
-                if (entity) entity.currentBid = t.bid;
-            });
+            if (Array.isArray(response)) {
+                response.forEach(t => {
+                    const entity = performanceData.get(t.targetId.toString());
+                    if (entity) entity.currentBid = t.bid;
+                });
+            }
         }
         if (rule.ad_type === 'SD' && allTargetIds.length > 0) {
              const response = await amazonAdsApiRequest({
@@ -293,10 +298,9 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
             });
         }
     } catch (e) {
-        console.error(`[RulesEngine] Failed to fetch current bids for ${rule.ad_type} rule.`, e);
+        console.error(`[RulesEngine] Failed to fetch current bids for ${rule.ad_type} rule.`, e.details || e);
     }
     
-    // Evaluate and collect actions
     for (const entity of allEntities) {
         if (throttledEntities.has(entity.entityId) || typeof entity.currentBid !== 'number') continue;
         
@@ -342,24 +346,21 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                         }
                     }
                 }
-                break; // First match wins
+                break; 
             }
         }
     }
 
-    // Apply updates
     if (sbKeywordsToUpdate.length > 0) {
         await amazonAdsApiRequest({ 
-            method: 'put', url: '/sb/v4/keywords', profileId: rule.profile_id, 
-            data: { keywords: sbKeywordsToUpdate },
-            headers: { 'Content-Type': 'application/vnd.sbkeywords.v4+json', 'Accept': 'application/vnd.sbkeywords.v4+json' }
+            method: 'put', url: '/sb/keywords', profileId: rule.profile_id, 
+            data: sbKeywordsToUpdate
         });
     }
     if (sbTargetsToUpdate.length > 0) {
         await amazonAdsApiRequest({ 
-            method: 'put', url: '/sb/v4/targets', profileId: rule.profile_id, 
-            data: { targets: sbTargetsToUpdate },
-            headers: { 'Content-Type': 'application/vnd.sbtargets.v4+json', 'Accept': 'application/vnd.sbtargets.v4+json' }
+            method: 'put', url: '/sb/targets', profileId: rule.profile_id, 
+            data: sbTargetsToUpdate
         });
     }
     if (sdTargetsToUpdate.length > 0) {
