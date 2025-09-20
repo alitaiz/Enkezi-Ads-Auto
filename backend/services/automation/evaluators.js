@@ -339,8 +339,11 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                         });
 
                         if (rule.ad_type === 'SB') {
-                            if (entity.entityType === 'keyword') sbKeywordsToUpdate.push({ keywordId: entity.entityId, bid: newBid });
-                            else sbTargetsToUpdate.push({ targetId: entity.entityId, bid: newBid });
+                            if (entity.entityType === 'keyword') {
+                                sbKeywordsToUpdate.push({ keywordId: entity.entityId, adGroupId: entity.adGroupId, campaignId: entity.campaignId, bid: newBid });
+                            } else {
+                                sbTargetsToUpdate.push({ targetId: entity.entityId, adGroupId: entity.adGroupId, campaignId: entity.campaignId, bid: newBid });
+                            }
                         } else if (rule.ad_type === 'SD') {
                             sdTargetsToUpdate.push({ targetId: entity.entityId, bid: newBid });
                         }
@@ -357,9 +360,9 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
     // --- Process API calls and collect results ---
     if (sbKeywordsToUpdate.length > 0) {
         try {
-            const response = await amazonAdsApiRequest({ method: 'put', url: '/sb/keywords', profileId: rule.profile_id, data: sbKeywordsToUpdate });
-            if (response && Array.isArray(response)) {
-                response.forEach(result => {
+            const response = await amazonAdsApiRequest({ method: 'put', url: '/sb/v4/keywords', profileId: rule.profile_id, data: { keywords: sbKeywordsToUpdate } });
+            if (response && Array.isArray(response.keywords)) {
+                response.keywords.forEach(result => {
                     if (result.code === 'SUCCESS') {
                         successfulEntityIds.add(result.keywordId.toString());
                     } else {
@@ -369,13 +372,13 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                     }
                 });
             }
-        } catch (e) { console.error('[RulesEngine] API call failed for PUT /sb/keywords.', e); }
+        } catch (e) { console.error('[RulesEngine] API call failed for PUT /sb/v4/keywords.', e); }
     }
     if (sbTargetsToUpdate.length > 0) {
         try {
-            const response = await amazonAdsApiRequest({ method: 'put', url: '/sb/targets', profileId: rule.profile_id, data: sbTargetsToUpdate });
-            if (response && Array.isArray(response)) {
-                response.forEach(result => {
+            const response = await amazonAdsApiRequest({ method: 'put', url: '/sb/v4/targets', profileId: rule.profile_id, data: { targets: sbTargetsToUpdate } });
+            if (response && Array.isArray(response.targets)) {
+                response.targets.forEach(result => {
                     if (result.code === 'SUCCESS') {
                         successfulEntityIds.add(result.targetId.toString());
                     } else {
@@ -385,7 +388,7 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                     }
                 });
             }
-        } catch (e) { console.error('[RulesEngine] API call failed for PUT /sb/targets.', e); }
+        } catch (e) { console.error('[RulesEngine] API call failed for PUT /sb/v4/targets.', e); }
     }
     if (sdTargetsToUpdate.length > 0) {
         try {
