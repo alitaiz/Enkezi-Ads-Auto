@@ -120,11 +120,16 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
                 throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for HMAC request.');
             }
             
+            // FIX: Retrieve LwA access token, as it's required for SBv4 HMAC requests.
+            const accessToken = await getAdsApiAccessToken();
+
             const host = new URL(ADS_API_ENDPOINT).hostname;
             const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
 
             finalHeaders['Host'] = host;
             finalHeaders['X-Amz-Date'] = timestamp;
+            // FIX: Add the access token header. This header is required for SBv4 HMAC auth.
+            finalHeaders['X-Amz-Access-Token'] = accessToken;
 
             // Step 1: Create Canonical URI
             const canonicalUri = url;
@@ -138,10 +143,12 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
             }
 
             // Step 3: Create Canonical Headers
-            const canonicalHeaders = `host:${host}\nx-amz-date:${timestamp}\n`;
+            // FIX: Add x-amz-access-token to the canonical headers, sorted alphabetically.
+            const canonicalHeaders = `host:${host}\nx-amz-access-token:${accessToken}\nx-amz-date:${timestamp}\n`;
 
             // Step 4: Create Signed Headers
-            const signedHeaders = 'host;x-amz-date';
+            // FIX: Add x-amz-access-token to the signed headers list, sorted alphabetically.
+            const signedHeaders = 'host;x-amz-access-token;x-amz-date';
 
             // Step 5: Create Hashed Payload
             const requestBody = data ? JSON.stringify(data) : '';
