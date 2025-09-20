@@ -80,6 +80,7 @@ export async function getAdsApiAccessToken(forceRefresh = false) {
 
 /**
  * Internal function that builds and sends a single request to the Amazon Ads API.
+ * This version exclusively uses OAuth 2.0 Bearer Token authentication.
  * @param {boolean} forceTokenRefresh - Whether to force a refresh of the access token.
  * @returns {Promise<object>} The axios response object.
  */
@@ -112,9 +113,9 @@ async function _buildAndSendRequest(method, url, profileId, data, params, header
 }
 
 /**
- * A wrapper for making authenticated requests to the Amazon Ads API.
- * It now intelligently switches between Bearer token and HMAC-SHA256 signature auth,
- * and includes a retry mechanism for authorization failures.
+ * A robust wrapper for making authenticated requests to the Amazon Ads API.
+ * It now exclusively uses Bearer token authentication and includes a retry 
+ * mechanism for authorization failures.
  */
 export async function amazonAdsApiRequest({ method, url, profileId, data, params, headers = {} }) {
     try {
