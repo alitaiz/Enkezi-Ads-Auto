@@ -37,16 +37,22 @@ const createSha256Hash = (data) => {
 
 /**
  * Retrieves a valid LWA access token, using a cache to avoid unnecessary refreshes.
+ * Now includes a `forceRefresh` option to bypass the cache.
+ * @param {boolean} forceRefresh - If true, bypasses the cache and fetches a new token.
  * @returns {Promise<string>} A valid access token.
  */
-export async function getAdsApiAccessToken() {
-    // Check cache first
-    if (adsApiTokenCache.token && Date.now() < adsApiTokenCache.expiresAt) {
+export async function getAdsApiAccessToken(forceRefresh = false) {
+    if (!forceRefresh && adsApiTokenCache.token && Date.now() < adsApiTokenCache.expiresAt) {
         console.log("[Auth] Using cached Amazon Ads API access token.");
         return adsApiTokenCache.token;
     }
 
-    console.log("[Auth] Cached token is invalid or expired. Requesting a new one...");
+    if (forceRefresh) {
+        console.log("[Auth] Forcing token refresh due to previous API error.");
+        adsApiTokenCache = { token: null, expiresAt: 0 }; // Invalidate cache
+    } else {
+        console.log("[Auth] Cached token is invalid or expired. Requesting a new one...");
+    }
     
     const {
         ADS_API_CLIENT_ID,
@@ -95,104 +101,125 @@ export async function getAdsApiAccessToken() {
 }
 
 /**
+ * Internal function that builds and sends a single request to the Amazon Ads API.
+ * @param {boolean} forceTokenRefresh - Whether to force a refresh of the access token.
+ * @returns {Promise<object>} The axios response object.
+ */
+async function _buildAndSendRequest(method, url, profileId, data, params, headers, forceTokenRefresh = false) {
+    const finalHeaders = {
+        'Amazon-Advertising-API-ClientId': process.env.ADS_API_CLIENT_ID,
+        ...headers
+    };
+    
+    if (profileId) {
+        finalHeaders['Amazon-Advertising-API-Scope'] = profileId;
+    }
+
+    const httpMethod = method.toLowerCase();
+    const requiresHmac = url.startsWith('/sb/v4/');
+
+    if (requiresHmac) {
+        const { ADS_API_ACCESS_KEY, ADS_API_SECRET_KEY } = process.env;
+        if (!ADS_API_ACCESS_KEY || !ADS_API_SECRET_KEY) {
+            throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for HMAC request.');
+        }
+        
+        const accessToken = await getAdsApiAccessToken(forceTokenRefresh);
+        const host = new URL(ADS_API_ENDPOINT).hostname;
+        const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
+
+        finalHeaders['Host'] = host;
+        finalHeaders['X-Amz-Date'] = timestamp;
+        finalHeaders['X-Amz-Access-Token'] = accessToken;
+        
+        const headersToSign = {
+            'host': host,
+            'x-amz-access-token': accessToken,
+            'x-amz-date': timestamp
+        };
+        
+        const contentType = finalHeaders['Content-Type'] || finalHeaders['content-type'];
+        if ((httpMethod === 'post' || httpMethod === 'put') && contentType) {
+            headersToSign['content-type'] = contentType;
+        }
+
+        const sortedHeaderKeys = Object.keys(headersToSign).sort();
+        const canonicalHeaders = sortedHeaderKeys.map(key => `${key}:${headersToSign[key]}`).join('\n') + '\n';
+        const signedHeaders = sortedHeaderKeys.join(';');
+
+        const canonicalUri = url;
+        let canonicalQueryString = '';
+        if (params) {
+            canonicalQueryString = Object.keys(params).sort().map(key => 
+                `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`
+            ).join('&');
+        }
+        const requestBody = data ? JSON.stringify(data) : '';
+        const hashedPayload = createSha256Hash(requestBody);
+
+        const canonicalRequest = [
+            method.toUpperCase(),
+            canonicalUri,
+            canonicalQueryString,
+            canonicalHeaders,
+            signedHeaders,
+            hashedPayload
+        ].join('\n');
+        
+        const stringToSign = `${timestamp}\n${canonicalRequest}`;
+        const signature = createHmacSignature(ADS_API_SECRET_KEY, stringToSign);
+        
+        finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+    } else {
+        const accessToken = await getAdsApiAccessToken(forceTokenRefresh);
+        if (!accessToken) {
+            throw new Error("Cannot make API request: failed to obtain a valid access token.");
+        }
+        finalHeaders['Authorization'] = `Bearer ${accessToken}`;
+    }
+    
+    return axios({
+        method,
+        url: `${ADS_API_ENDPOINT}${url}`,
+        headers: finalHeaders,
+        data,
+        params,
+    });
+}
+
+/**
  * A wrapper for making authenticated requests to the Amazon Ads API.
- * It now intelligently switches between Bearer token and HMAC-SHA256 signature auth.
+ * It now intelligently switches between Bearer token and HMAC-SHA256 signature auth,
+ * and includes a retry mechanism for authorization failures.
  */
 export async function amazonAdsApiRequest({ method, url, profileId, data, params, headers = {} }) {
     try {
-        const finalHeaders = {
-            'Amazon-Advertising-API-ClientId': process.env.ADS_API_CLIENT_ID,
-            ...headers
-        };
-        
-        if (profileId) {
-            finalHeaders['Amazon-Advertising-API-Scope'] = profileId;
-        }
-
-        // --- DYNAMIC AUTHENTICATION LOGIC ---
-        // Simplified: HMAC is now ONLY required for Sponsored Brands v4 endpoints.
-        const httpMethod = method.toLowerCase();
-        const requiresHmac = url.startsWith('/sb/v4/');
-
-
-        if (requiresHmac) {
-            // Use HMAC Signature
-            const { ADS_API_ACCESS_KEY, ADS_API_SECRET_KEY } = process.env;
-            if (!ADS_API_ACCESS_KEY || !ADS_API_SECRET_KEY) {
-                throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for HMAC request.');
-            }
-            
-            const accessToken = await getAdsApiAccessToken();
-            const host = new URL(ADS_API_ENDPOINT).hostname;
-            const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
-
-            finalHeaders['Host'] = host;
-            finalHeaders['X-Amz-Date'] = timestamp;
-            finalHeaders['X-Amz-Access-Token'] = accessToken;
-            
-            // --- Robust Header Signing ---
-            const headersToSign = {
-                'host': host,
-                'x-amz-access-token': accessToken,
-                'x-amz-date': timestamp
-            };
-            
-            const contentType = finalHeaders['Content-Type'] || finalHeaders['content-type'];
-            if ((httpMethod === 'post' || httpMethod === 'put') && contentType) {
-                headersToSign['content-type'] = contentType;
-            }
-
-            const sortedHeaderKeys = Object.keys(headersToSign).sort();
-            const canonicalHeaders = sortedHeaderKeys.map(key => `${key}:${headersToSign[key]}`).join('\n') + '\n';
-            const signedHeaders = sortedHeaderKeys.join(';');
-
-            // --- Canonical Request Construction ---
-            const canonicalUri = url;
-            let canonicalQueryString = '';
-            if (params) {
-                canonicalQueryString = Object.keys(params).sort().map(key => 
-                    `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`
-                ).join('&');
-            }
-            const requestBody = data ? JSON.stringify(data) : '';
-            const hashedPayload = createSha256Hash(requestBody);
-
-            const canonicalRequest = [
-                method.toUpperCase(),
-                canonicalUri,
-                canonicalQueryString,
-                canonicalHeaders,
-                signedHeaders,
-                hashedPayload
-            ].join('\n');
-            
-            const stringToSign = `${timestamp}\n${canonicalRequest}`;
-            const signature = createHmacSignature(ADS_API_SECRET_KEY, stringToSign);
-            
-            finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-        } else {
-            // Use Bearer Token for all other APIs (SP, SD, v3 SB, etc.)
-            const accessToken = await getAdsApiAccessToken();
-            if (!accessToken) {
-                throw new Error("Cannot make API request: failed to obtain a valid access token.");
-            }
-            finalHeaders['Authorization'] = `Bearer ${accessToken}`;
-        }
-        
-        const response = await axios({
-            method,
-            url: `${ADS_API_ENDPOINT}${url}`,
-            headers: finalHeaders,
-            data,
-            params,
-        });
-
+        const response = await _buildAndSendRequest(method, url, profileId, data, params, headers, false);
         return response.data;
     } catch (error) {
-        console.error(`Amazon Ads API request failed for ${method.toUpperCase()} ${url}:`, error.response?.data || { message: error.message });
         const errorDetails = error.response?.data || { message: error.message };
-        const status = error.response?.status || 500;
-        throw { status, details: errorDetails };
+        const status = error.response?.status;
+        const errorMessage = (errorDetails.message || '').toLowerCase();
+
+        // Check for specific authorization error conditions that warrant a retry
+        if (status === 401 || status === 403 || errorMessage.includes('unauthorized') || errorMessage.includes('invalid token')) {
+            console.warn(`[Auth] API request to ${url} failed with authorization error. Forcing token refresh and retrying once.`);
+            try {
+                // This is the retry attempt with a forced token refresh.
+                const retryResponse = await _buildAndSendRequest(method, url, profileId, data, params, headers, true);
+                return retryResponse.data;
+            } catch (retryError) {
+                // If the retry also fails, throw the error from the retry attempt.
+                console.error(`Amazon Ads API retry request failed for ${method.toUpperCase()} ${url}:`, retryError.response?.data || { message: retryError.message });
+                const retryErrorDetails = retryError.response?.data || { message: retryError.message };
+                const retryStatus = retryError.response?.status || 500;
+                throw { status: retryStatus, details: retryErrorDetails };
+            }
+        } else {
+            // For all other errors, log and re-throw them immediately.
+            console.error(`Amazon Ads API request failed for ${method.toUpperCase()} ${url}:`, errorDetails);
+            throw { status: status || 500, details: errorDetails };
+        }
     }
 }
