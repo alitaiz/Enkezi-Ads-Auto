@@ -110,47 +110,58 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
         }
 
         // --- DYNAMIC AUTHENTICATION LOGIC ---
-        // Check if the URL matches the patterns requiring HMAC signature authentication.
-        const requiresHmac = url.startsWith('/sb/v4/') || url.startsWith('/portfolios');
+        // Refined condition: HMAC is required for all /sb/v4/ routes and for /portfolios
+        // routes that are NOT a simple GET list (i.e., they are PUT, POST, or have an ID in the path).
+        const requiresHmac = url.startsWith('/sb/v4/') ||
+                           (url.startsWith('/portfolios') && (method.toLowerCase() !== 'get' || url.split('/').length > 2));
+
 
         if (requiresHmac) {
-            // Use HMAC Signature for Sponsored Brands v4 and Portfolios
+            // Use HMAC Signature
             const { ADS_API_ACCESS_KEY, ADS_API_SECRET_KEY } = process.env;
             if (!ADS_API_ACCESS_KEY || !ADS_API_SECRET_KEY) {
                 throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for HMAC request.');
             }
             
             const accessToken = await getAdsApiAccessToken();
-
             const host = new URL(ADS_API_ENDPOINT).hostname;
             const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
 
             finalHeaders['Host'] = host;
             finalHeaders['X-Amz-Date'] = timestamp;
             finalHeaders['X-Amz-Access-Token'] = accessToken;
+            
+            // --- Robust Header Signing ---
+            // 1. Collect all headers that need to be signed.
+            const headersToSign = {
+                'host': host,
+                'x-amz-access-token': accessToken,
+                'x-amz-date': timestamp
+            };
+            
+            // 2. Add Content-Type if it's a POST/PUT request and the header exists.
+            const contentType = finalHeaders['Content-Type'] || finalHeaders['content-type'];
+            const httpMethod = method.toLowerCase();
+            if ((httpMethod === 'post' || httpMethod === 'put') && contentType) {
+                headersToSign['content-type'] = contentType;
+            }
 
-            // Step 1: Create Canonical URI
+            // 3. Create Canonical and Signed Headers by sorting the keys alphabetically.
+            const sortedHeaderKeys = Object.keys(headersToSign).sort();
+            const canonicalHeaders = sortedHeaderKeys.map(key => `${key}:${headersToSign[key]}`).join('\n') + '\n';
+            const signedHeaders = sortedHeaderKeys.join(';');
+
+            // --- Canonical Request Construction ---
             const canonicalUri = url;
-
-            // Step 2: Create Canonical Query String
             let canonicalQueryString = '';
             if (params) {
                 canonicalQueryString = Object.keys(params).sort().map(key => 
                     `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`
                 ).join('&');
             }
-
-            // Step 3: Create Canonical Headers
-            const canonicalHeaders = `host:${host}\nx-amz-access-token:${accessToken}\nx-amz-date:${timestamp}\n`;
-
-            // Step 4: Create Signed Headers
-            const signedHeaders = 'host;x-amz-access-token;x-amz-date';
-
-            // Step 5: Create Hashed Payload
             const requestBody = data ? JSON.stringify(data) : '';
             const hashedPayload = createSha256Hash(requestBody);
 
-            // Step 6: Create Canonical Request
             const canonicalRequest = [
                 method.toUpperCase(),
                 canonicalUri,
@@ -160,18 +171,13 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
                 hashedPayload
             ].join('\n');
             
-            // Step 7: Create the String to Sign
-            // FIX: The string to sign must be prefixed with the timestamp per Amazon's HMAC spec.
             const stringToSign = `${timestamp}\n${canonicalRequest}`;
-
-            // Step 8: Create Signature from the correct string
             const signature = createHmacSignature(ADS_API_SECRET_KEY, stringToSign);
             
-            // Step 9: Construct Authorization Header
             finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
         } else {
-            // Use Bearer Token for all other APIs (SP, SD, etc.)
+            // Use Bearer Token for all other APIs (SP, SD, v3 SB, GET /portfolios etc.)
             const accessToken = await getAdsApiAccessToken();
             if (!accessToken) {
                 throw new Error("Cannot make API request: failed to obtain a valid access token.");
