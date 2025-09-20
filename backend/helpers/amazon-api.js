@@ -110,8 +110,9 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
         }
 
         // --- DYNAMIC AUTHENTICATION LOGIC ---
-        // CORRECTED: HMAC is required for all /sb/v4/ routes AND all /portfolios routes.
-        const requiresHmac = url.startsWith('/sb/v4/') || url.startsWith('/portfolios');
+        // Simplified: HMAC is now ONLY required for Sponsored Brands v4 endpoints.
+        const httpMethod = method.toLowerCase();
+        const requiresHmac = url.startsWith('/sb/v4/');
 
 
         if (requiresHmac) {
@@ -130,21 +131,17 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
             finalHeaders['X-Amz-Access-Token'] = accessToken;
             
             // --- Robust Header Signing ---
-            // 1. Collect all headers that need to be signed.
             const headersToSign = {
                 'host': host,
                 'x-amz-access-token': accessToken,
                 'x-amz-date': timestamp
             };
             
-            // 2. Add Content-Type if it's a POST/PUT request and the header exists.
             const contentType = finalHeaders['Content-Type'] || finalHeaders['content-type'];
-            const httpMethod = method.toLowerCase();
             if ((httpMethod === 'post' || httpMethod === 'put') && contentType) {
                 headersToSign['content-type'] = contentType;
             }
 
-            // 3. Create Canonical and Signed Headers by sorting the keys alphabetically.
             const sortedHeaderKeys = Object.keys(headersToSign).sort();
             const canonicalHeaders = sortedHeaderKeys.map(key => `${key}:${headersToSign[key]}`).join('\n') + '\n';
             const signedHeaders = sortedHeaderKeys.join(';');

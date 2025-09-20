@@ -117,8 +117,7 @@ const getBudgetAmount = (campaign) => {
 
 /**
  * POST /api/amazon/campaigns/list
- * Fetches a list of campaigns across all ad types (SP, SB, SD), and enriches them
- * with portfolio budget information.
+ * Fetches a list of campaigns across all ad types (SP, SB, SD).
  */
 router.post('/campaigns/list', async (req, res) => {
     const { profileId, stateFilter, campaignIdFilter } = req.body;
@@ -178,63 +177,13 @@ router.post('/campaigns/list', async (req, res) => {
 
         const [spCampaigns, sbCampaigns, sdCampaigns] = await Promise.all([spPromise, sbPromise, sdPromise]);
 
-        // --- Portfolio Budget Enrichment Step ---
-        const allRawCampaigns = [...spCampaigns, ...sbCampaigns, ...sdCampaigns];
-        const portfolioIds = [...new Set(allRawCampaigns.map(c => c.portfolioId).filter(Boolean).map(String))];
-        const portfolioDailyBudgets = new Map();
-
-        if (portfolioIds.length > 0) {
-            console.log(`[Portfolio Fetch] Found ${portfolioIds.length} unique portfolio IDs. Fetching their budgets...`);
-            try {
-                const chunkSize = 100;
-                const portfolioPromises = [];
-                for (let i = 0; i < portfolioIds.length; i += chunkSize) {
-                    const chunk = portfolioIds.slice(i, i + chunkSize);
-                    const promise = amazonAdsApiRequest({
-                        method: 'get', url: '/portfolios', profileId,
-                        params: { portfolioIdFilter: chunk.join(',') }
-                    }).catch(e => {
-                        console.error(`[Portfolio Fetch] Failed to fetch chunk of portfolios:`, e.details || e.message);
-                        return [];
-                    });
-                    portfolioPromises.push(promise);
-                }
-                
-                const portfolioChunks = await Promise.all(portfolioPromises);
-                const allPortfolios = portfolioChunks.flat();
-
-                if (Array.isArray(allPortfolios)) {
-                    allPortfolios.forEach(p => {
-                        if (p.budget && p.budget.budgetType === 'DAILY' && typeof p.budget.amount === 'number') {
-                            portfolioDailyBudgets.set(p.portfolioId.toString(), p.budget.amount);
-                        }
-                    });
-                }
-                console.log(`[Portfolio Fetch] Successfully mapped daily budgets for ${portfolioDailyBudgets.size} portfolios.`);
-            } catch (e) {
-                console.error("[Portfolio Fetch] A critical error occurred while fetching portfolio budgets, continuing without them.", e);
-            }
-        }
-
-        // --- Transform and Merge Results ---
+        // --- Transform and Merge Results (Portfolio logic removed) ---
         const transformCampaign = (campaign, type) => {
-            // Start with the direct budget from the campaign object itself.
-            let dailyBudget = getBudgetAmount(campaign);
-
-            // If the direct budget is 0 AND the campaign is in a portfolio,
-            // try to use the portfolio's budget as a fallback.
-            if (dailyBudget === 0 && campaign.portfolioId) {
-                const portfolioBudget = portfolioDailyBudgets.get(campaign.portfolioId.toString());
-                if (typeof portfolioBudget === 'number') {
-                    dailyBudget = portfolioBudget;
-                }
-            }
-
             return {
                 campaignId: campaign.campaignId, name: campaign.name, campaignType: type,
                 targetingType: campaign.targetingType || campaign.tactic || 'UNKNOWN',
                 state: (campaign.state || 'archived').toLowerCase(),
-                dailyBudget: dailyBudget,
+                dailyBudget: getBudgetAmount(campaign), // Budget is now sourced directly
                 startDate: campaign.startDate, endDate: campaign.endDate, bidding: campaign.bidding,
                 portfolioId: campaign.portfolioId,
             };
