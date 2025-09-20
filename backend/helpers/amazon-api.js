@@ -26,6 +26,16 @@ const createHmacSignature = (secretKey, stringToSign) => {
 };
 
 /**
+ * Creates a SHA256 hash of a given string.
+ * @param {string} data - The string to hash.
+ * @returns {string} The hexadecimal hash.
+ */
+const createSha256Hash = (data) => {
+    return crypto.createHash('sha256').update(data, 'utf8').digest('hex');
+};
+
+
+/**
  * Retrieves a valid LWA access token, using a cache to avoid unnecessary refreshes.
  * @returns {Promise<string>} A valid access token.
  */
@@ -110,24 +120,47 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
                 throw new Error('Missing ADS_API_ACCESS_KEY or ADS_API_SECRET_KEY in .env for HMAC request.');
             }
             
-            // The host header is required for the signature.
             const host = new URL(ADS_API_ENDPOINT).hostname;
-            finalHeaders['Host'] = host;
-
-            // The 'X-Amz-Date' header is required. Format: YYYYMMDD'T'HHMMSS'Z'.
             const timestamp = new Date().toISOString().replace(/[-:]|\.\d{3}/g, '');
+
+            finalHeaders['Host'] = host;
             finalHeaders['X-Amz-Date'] = timestamp;
-            
-            // FIX: Headers must be included in the 'SignedHeaders' list, sorted alphabetically.
-            // The 'host' header was missing.
+
+            // Step 1: Create Canonical URI
+            const canonicalUri = url;
+
+            // Step 2: Create Canonical Query String
+            let canonicalQueryString = '';
+            if (params) {
+                canonicalQueryString = Object.keys(params).sort().map(key => 
+                    `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`
+                ).join('&');
+            }
+
+            // Step 3: Create Canonical Headers
+            const canonicalHeaders = `host:${host}\nx-amz-date:${timestamp}\n`;
+
+            // Step 4: Create Signed Headers
             const signedHeaders = 'host;x-amz-date';
 
+            // Step 5: Create Hashed Payload
             const requestBody = data ? JSON.stringify(data) : '';
-            const stringToSign = `${timestamp}\n${method.toUpperCase()}\n${url}\n${requestBody}`;
+            const hashedPayload = createSha256Hash(requestBody);
+
+            // Step 6: Create Canonical Request
+            const canonicalRequest = [
+                method.toUpperCase(),
+                canonicalUri,
+                canonicalQueryString,
+                canonicalHeaders,
+                signedHeaders,
+                hashedPayload
+            ].join('\n');
+
+            // Step 7: Create Signature from the Canonical Request
+            const signature = createHmacSignature(ADS_API_SECRET_KEY, canonicalRequest);
             
-            const signature = createHmacSignature(ADS_API_SECRET_KEY, stringToSign);
-            
-            // Construct the final Authorization header with the corrected SignedHeaders.
+            // Step 8: Construct Authorization Header
             finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
         } else {
