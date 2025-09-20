@@ -110,10 +110,8 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
         }
 
         // --- DYNAMIC AUTHENTICATION LOGIC ---
-        // Refined condition: HMAC is required for all /sb/v4/ routes and for /portfolios
-        // routes that are NOT a simple GET list (i.e., they are PUT, POST, or have an ID in the path).
-        const requiresHmac = url.startsWith('/sb/v4/') ||
-                           (url.startsWith('/portfolios') && (method.toLowerCase() !== 'get' || url.split('/').length > 2));
+        // CORRECTED: HMAC is required for all /sb/v4/ routes AND all /portfolios routes.
+        const requiresHmac = url.startsWith('/sb/v4/') || url.startsWith('/portfolios');
 
 
         if (requiresHmac) {
@@ -177,7 +175,7 @@ export async function amazonAdsApiRequest({ method, url, profileId, data, params
             finalHeaders['Authorization'] = `AMZ-ADS-HMAC-SHA256-20220101 Credential=${ADS_API_ACCESS_KEY}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
         } else {
-            // Use Bearer Token for all other APIs (SP, SD, v3 SB, GET /portfolios etc.)
+            // Use Bearer Token for all other APIs (SP, SD, v3 SB, etc.)
             const accessToken = await getAdsApiAccessToken();
             if (!accessToken) {
                 throw new Error("Cannot make API request: failed to obtain a valid access token.");
