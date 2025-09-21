@@ -257,33 +257,32 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
 
     const allKeywordIds = allEntities.filter(e => e.entityType === 'keyword').map(e => e.entityId);
     const allTargetIds = allEntities.filter(e => e.entityType === 'target').map(e => e.entityId);
+    
+    const entitiesWithoutBids = [];
 
+    // --- Phase 1: Fetch explicit bids ---
     try {
         if (rule.ad_type === 'SB' && allKeywordIds.length > 0) {
             const response = await amazonAdsApiRequest({
-                method: 'get',
-                url: '/sb/keywords',
-                profileId: rule.profile_id,
+                method: 'get', url: '/sb/keywords', profileId: rule.profile_id,
                 params: { keywordIdFilter: allKeywordIds.join(',') },
             });
             if (Array.isArray(response)) {
                 response.forEach(kw => {
                     const entity = performanceData.get(kw.keywordId.toString());
-                    if (entity) entity.currentBid = kw.bid;
+                    if (entity && typeof kw.bid === 'number') entity.currentBid = kw.bid;
                 });
             }
         }
         if (rule.ad_type === 'SB' && allTargetIds.length > 0) {
             const response = await amazonAdsApiRequest({
-                method: 'get',
-                url: '/sb/targets',
-                profileId: rule.profile_id,
+                method: 'get', url: '/sb/targets', profileId: rule.profile_id,
                 params: { targetIdFilter: allTargetIds.join(',') },
             });
             if (Array.isArray(response)) {
                 response.forEach(t => {
                     const entity = performanceData.get(t.targetId.toString());
-                    if (entity) entity.currentBid = t.bid;
+                    if (entity && typeof t.bid === 'number') entity.currentBid = t.bid;
                 });
             }
         }
@@ -294,13 +293,53 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
             });
             (response.targets || []).forEach(t => {
                 const entity = performanceData.get(t.targetId.toString());
-                if (entity) entity.currentBid = t.bid;
+                if (entity && typeof t.bid === 'number') entity.currentBid = t.bid;
             });
         }
     } catch (e) {
         console.error(`[RulesEngine] Failed to fetch current bids for ${rule.ad_type} rule.`, e.details || e);
     }
     
+    allEntities.forEach(entity => {
+        if (typeof entity.currentBid !== 'number') {
+            entitiesWithoutBids.push(entity);
+        }
+    });
+
+    // --- Phase 2: Fallback to Ad Group default bids ---
+    if (entitiesWithoutBids.length > 0) {
+        console.log(`[RulesEngine] Found ${entitiesWithoutBids.length} ${rule.ad_type} entities inheriting bids. Fetching ad group default bids...`);
+        const adGroupIds = [...new Set(entitiesWithoutBids.map(e => e.adGroupId).filter(Boolean))];
+        
+        if (adGroupIds.length > 0) {
+            try {
+                let adGroupData = [];
+                if (rule.ad_type === 'SB') {
+                    const response = await amazonAdsApiRequest({ method: 'get', url: '/sb/adGroups', profileId: rule.profile_id, params: { adGroupIdFilter: adGroupIds.join(',') } });
+                    adGroupData = response || [];
+                } else if (rule.ad_type === 'SD') {
+                    const response = await amazonAdsApiRequest({ method: 'get', url: '/sd/adGroups', profileId: rule.profile_id, params: { adGroupIdFilter: adGroupIds.join(',') } });
+                    adGroupData = response.adGroups || [];
+                }
+                
+                const adGroupBidMap = new Map();
+                adGroupData.forEach(ag => adGroupBidMap.set(ag.adGroupId.toString(), ag.defaultBid));
+                
+                entitiesWithoutBids.forEach(entity => {
+                    const defaultBid = adGroupBidMap.get(entity.adGroupId.toString());
+                    if (typeof defaultBid === 'number') {
+                        entity.currentBid = defaultBid;
+                    } else {
+                        console.warn(`[RulesEngine] Could not find default bid for ${rule.ad_type} ad group ${entity.adGroupId} for entity ${entity.entityId}`);
+                    }
+                });
+            } catch(e) {
+                console.error(`[RulesEngine] Failed to fetch ${rule.ad_type} ad group default bids.`, e.details || e);
+            }
+        }
+    }
+    
+    // --- Phase 3: Evaluate and prepare actions ---
     for (const entity of allEntities) {
         if (throttledEntities.has(entity.entityId) || typeof entity.currentBid !== 'number') continue;
         
@@ -357,7 +396,7 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
     const successfulEntityIds = new Set();
     const failedUpdates = [];
 
-    // --- Process API calls and collect results ---
+    // --- Phase 4: Process API calls and collect results ---
     if (sbKeywordsToUpdate.length > 0) {
         try {
             const response = await amazonAdsApiRequest({ method: 'put', url: '/sb/keywords', profileId: rule.profile_id, data: sbKeywordsToUpdate });
