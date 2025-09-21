@@ -19,28 +19,7 @@ const processRule = async (rule) => {
             return;
         }
 
-        // --- NEW: Verify actual campaign types from API ---
-        const campaignDetailsResponse = await amazonAdsApiRequest({
-            method: 'post',
-            url: '/sp/campaigns/list',
-            profileId: rule.profile_id,
-            data: { campaignIdFilter: { include: campaignIds.map(String) } },
-             headers: { 'Content-Type': 'application/vnd.spCampaign.v3+json', 'Accept': 'application/vnd.spCampaign.v3+json' },
-        });
-
-        const campaignTypeMap = new Map();
-        if (campaignDetailsResponse.campaigns && Array.isArray(campaignDetailsResponse.campaigns)) {
-            campaignDetailsResponse.campaigns.forEach(c => {
-                // Assuming campaignType is not available directly, fallback to a default or derive it
-                // For this example, we'll default to 'SP' as it's the most common and robust path.
-                // A more advanced version could fetch from SB/SD endpoints if SP fails.
-                campaignTypeMap.set(String(c.campaignId), c.campaignType || 'sponsoredProducts');
-            });
-        }
-        
-        const spCampaignIds = campaignIds.filter(id => campaignTypeMap.get(String(id)) === 'sponsoredProducts');
-        const sbCampaignIds = campaignIds.filter(id => campaignTypeMap.get(String(id)) === 'sponsoredBrands');
-        const sdCampaignIds = campaignIds.filter(id => campaignTypeMap.get(String(id)) === 'sponsoredDisplay');
+        const { performanceMap, dataDateRange } = await getPerformanceData(rule, campaignIds);
 
         // --- Cooldown Logic ---
         const cooldownConfig = rule.config.cooldown || { value: 0 };
@@ -53,42 +32,23 @@ const processRule = async (rule) => {
             throttledEntities = new Set(throttleCheckResult.rows.map(r => r.entity_id));
         }
         
-        // --- Process each ad type separately with the correct evaluator ---
-        let finalResult = { summary: '', details: { actions_by_campaign: {} }, actedOnEntities: [] };
-        let finalDataDateRange = null;
-
-        if (spCampaignIds.length > 0) {
-            const { performanceMap, dataDateRange } = await getPerformanceData({ ...rule, ad_type: 'SP' }, spCampaignIds);
-            if (!finalDataDateRange) finalDataDateRange = dataDateRange;
-            if (performanceMap.size > 0) {
-                let result;
-                if (rule.rule_type === 'BID_ADJUSTMENT') {
-                    result = await evaluateBidAdjustmentRule(rule, performanceMap, throttledEntities);
-                } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
-                     result = await evaluateSearchTermAutomationRule(rule, performanceMap, throttledEntities);
-                } else if (rule.rule_type === 'BUDGET_ACCELERATION') {
-                    result = await evaluateBudgetAccelerationRule(rule, performanceMap);
-                }
-                if (result) {
-                    finalResult.actedOnEntities.push(...result.actedOnEntities);
-                    Object.assign(finalResult.details.actions_by_campaign, result.details.actions_by_campaign);
-                }
+        let finalResult;
+        if (performanceMap.size === 0) {
+            finalResult = { summary: 'No performance data found for the specified scope.', details: { actions_by_campaign: {} }, actedOnEntities: [] };
+        } else if (rule.rule_type === 'BID_ADJUSTMENT') {
+            if (rule.ad_type === 'SB' || rule.ad_type === 'SD') {
+                finalResult = await evaluateSbSdBidAdjustmentRule(rule, performanceMap, throttledEntities);
+            } else {
+                finalResult = await evaluateBidAdjustmentRule(rule, performanceMap, throttledEntities);
             }
+        } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
+             finalResult = await evaluateSearchTermAutomationRule(rule, performanceMap, throttledEntities);
+        } else if (rule.rule_type === 'BUDGET_ACCELERATION') {
+            finalResult = await evaluateBudgetAccelerationRule(rule, performanceMap);
+        } else {
+            finalResult = { summary: 'Rule type not recognized.', details: { actions_by_campaign: {} }, actedOnEntities: [] };
         }
         
-        const sbSdCampaignIds = [...sbCampaignIds, ...sdCampaignIds];
-        if (sbSdCampaignIds.length > 0 && rule.rule_type === 'BID_ADJUSTMENT') {
-            const { performanceMap, dataDateRange } = await getPerformanceData({ ...rule, ad_type: 'SB' }, sbSdCampaignIds); // Assuming SB/SD data structure is similar enough
-            if (!finalDataDateRange) finalDataDateRange = dataDateRange;
-            if (performanceMap.size > 0) {
-                const result = await evaluateSbSdBidAdjustmentRule(rule, performanceMap, throttledEntities);
-                 if (result) {
-                    finalResult.actedOnEntities.push(...result.actedOnEntities);
-                    Object.assign(finalResult.details.actions_by_campaign, result.details.actions_by_campaign);
-                }
-            }
-        }
-
         // --- Apply new throttles ---
         if (finalResult.actedOnEntities.length > 0 && cooldownConfig.value > 0) {
             const { value, unit } = cooldownConfig;
@@ -103,29 +63,17 @@ const processRule = async (rule) => {
         }
         
         // --- Final Logging ---
+        // Add the detailed date range object to the log details
+        if (dataDateRange) {
+            finalResult.details.data_date_range = dataDateRange;
+        }
+
         const totalChanges = Object.values(finalResult.details.actions_by_campaign).reduce((sum, campaign) => sum + (campaign.changes?.length || 0) + (campaign.newNegatives?.length || 0), 0);
         
-        // Add date range to details before logging
-        if (finalDataDateRange) {
-            finalResult.details.data_date_range = {
-                start: finalDataDateRange.start.toISOString().split('T')[0],
-                end: finalDataDateRange.end.toISOString().split('T')[0],
-                note: finalDataDateRange.note,
-                sourceType: finalDataDateRange.sourceType,
-            };
-        }
-        
         if (totalChanges > 0) {
-            const summaryParts = [];
-            const bidChanges = Object.values(finalResult.details.actions_by_campaign).reduce((s, c) => s + (c.changes?.length || 0), 0);
-            const negChanges = Object.values(finalResult.details.actions_by_campaign).reduce((s, c) => s + (c.newNegatives?.length || 0), 0);
-            if (bidChanges > 0) summaryParts.push(`Adjusted bids for ${bidChanges} item(s)`);
-            if (negChanges > 0) summaryParts.push(`Created ${negChanges} negative(s)`);
-            finalResult.summary = summaryParts.join(' and ') + '.';
-
             await logAction(rule, 'SUCCESS', finalResult.summary, finalResult.details);
         } else {
-            await logAction(rule, 'NO_ACTION', 'No entities met the rule criteria.', finalResult.details);
+            await logAction(rule, 'NO_ACTION', finalResult.summary || 'No entities met the rule criteria.', finalResult.details);
         }
 
     } catch (error) {
