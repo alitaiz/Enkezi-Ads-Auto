@@ -308,36 +308,37 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
 
     // --- Phase 2: Fallback to Ad Group default bids ---
     if (entitiesWithoutBids.length > 0) {
-        console.log(`[RulesEngine] Found ${entitiesWithoutBids.length} ${rule.ad_type} entities inheriting bids. Fetching ad group default bids...`);
-        const adGroupIds = [...new Set(entitiesWithoutBids.map(e => e.adGroupId).filter(Boolean))];
-        
-        if (adGroupIds.length > 0) {
-            try {
-                let adGroupData = [];
-                if (rule.ad_type === 'SB') {
+        // ONLY RUN THIS FALLBACK FOR SPONSORED BRANDS. SD Ad Groups do not have a defaultBid property.
+        if (rule.ad_type === 'SB') {
+            console.log(`[RulesEngine] Found ${entitiesWithoutBids.length} SB entities inheriting bids. Fetching ad group default bids...`);
+            const adGroupIds = [...new Set(entitiesWithoutBids.map(e => e.adGroupId).filter(Boolean))];
+            
+            if (adGroupIds.length > 0) {
+                try {
                     const response = await amazonAdsApiRequest({ method: 'get', url: '/sb/adGroups', profileId: rule.profile_id, params: { adGroupIdFilter: adGroupIds.join(',') } });
-                    adGroupData = response || [];
-                } else if (rule.ad_type === 'SD') {
-                    const response = await amazonAdsApiRequest({ method: 'get', url: '/sd/adGroups', profileId: rule.profile_id, params: { adGroupIdFilter: adGroupIds.join(',') } });
-                    adGroupData = response.adGroups || [];
+                    const adGroupData = response || [];
+                    
+                    const adGroupBidMap = new Map();
+                    adGroupData.forEach(ag => adGroupBidMap.set(ag.adGroupId.toString(), ag.defaultBid));
+                    
+                    entitiesWithoutBids.forEach(entity => {
+                        const defaultBid = adGroupBidMap.get(entity.adGroupId.toString());
+                        if (typeof defaultBid === 'number') {
+                            entity.currentBid = defaultBid;
+                        } else {
+                            console.warn(`[RulesEngine] Could not find default bid for SB ad group ${entity.adGroupId} for entity ${entity.entityId}`);
+                        }
+                    });
+                } catch(e) {
+                    console.error(`[RulesEngine] Failed to fetch SB ad group default bids.`, e.details || e);
                 }
-                
-                const adGroupBidMap = new Map();
-                adGroupData.forEach(ag => adGroupBidMap.set(ag.adGroupId.toString(), ag.defaultBid));
-                
-                entitiesWithoutBids.forEach(entity => {
-                    const defaultBid = adGroupBidMap.get(entity.adGroupId.toString());
-                    if (typeof defaultBid === 'number') {
-                        entity.currentBid = defaultBid;
-                    } else {
-                        console.warn(`[RulesEngine] Could not find default bid for ${rule.ad_type} ad group ${entity.adGroupId} for entity ${entity.entityId}`);
-                    }
-                });
-            } catch(e) {
-                console.error(`[RulesEngine] Failed to fetch ${rule.ad_type} ad group default bids.`, e.details || e);
             }
+        } else if (rule.ad_type === 'SD') {
+            // For SD, there is no default bid fallback. Log a clear message explaining why they are skipped.
+            console.log(`[RulesEngine] Found ${entitiesWithoutBids.length} SD entities without an explicit bid override. They will be skipped as they likely use a dynamic bidding strategy set at the campaign level.`);
         }
     }
+    
     
     // --- Phase 3: Evaluate and prepare actions ---
     for (const entity of allEntities) {
