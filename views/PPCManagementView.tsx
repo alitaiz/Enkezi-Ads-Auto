@@ -213,6 +213,7 @@ export function PPCManagementView() {
     const [excludeTerm, setExcludeTerm] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: keyof CampaignWithMetrics; direction: 'ascending' | 'descending' } | null>({ key: 'adjustedSpend', direction: 'descending' });
     const [statusFilter, setStatusFilter] = useState<CampaignState | 'all'>('enabled');
+    const [typeFilter, setTypeFilter] = useState<'all' | 'sponsoredProducts' | 'sponsoredBrands' | 'sponsoredDisplay'>('all');
     const [metricFilters, setMetricFilters] = useState<MetricFilters>({
         adjustedSpend: {}, sales: {}, orders: {}, impressions: {}, clicks: {}, acos: {}, roas: {},
     });
@@ -500,6 +501,9 @@ export function PPCManagementView() {
         if (statusFilter !== 'all') {
             data = data.filter(c => c.state === statusFilter);
         }
+        if (typeFilter !== 'all') {
+            data = data.filter(c => c.campaignType === typeFilter);
+        }
         if (searchTerm) {
             data = data.filter(c => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
         }
@@ -537,7 +541,7 @@ export function PPCManagementView() {
         });
 
         return data;
-    }, [combinedCampaignData, statusFilter, searchTerm, excludeTerm, metricFilters]);
+    }, [combinedCampaignData, statusFilter, typeFilter, searchTerm, excludeTerm, metricFilters]);
 
     const summaryMetrics: SummaryMetricsData | null = useMemo(() => {
         if (loading.data) return null;
@@ -734,6 +738,25 @@ export function PPCManagementView() {
                     <label htmlFor="status-filter" style={{ fontWeight: 500 }}>Status:</label>
                     <select id="status-filter" style={styles.profileSelector} value={statusFilter} onChange={e => { setStatusFilter(e.target.value as any); setCurrentPage(1); setSelectedCampaignIds(new Set()); }} disabled={loading.data}>
                         <option value="enabled">Enabled</option> <option value="paused">Paused</option> <option value="archived">Archived</option> <option value="all">All States</option>
+                    </select>
+                </div>
+                 <div style={styles.controlGroup}>
+                    <label htmlFor="type-filter" style={{ fontWeight: 500 }}>Type:</label>
+                    <select
+                        id="type-filter"
+                        style={styles.profileSelector}
+                        value={typeFilter}
+                        onChange={e => {
+                            setTypeFilter(e.target.value as any);
+                            setCurrentPage(1);
+                            setSelectedCampaignIds(new Set());
+                        }}
+                        disabled={loading.data}
+                    >
+                        <option value="all">All Types</option>
+                        <option value="sponsoredProducts">SP</option>
+                        <option value="sponsoredBrands">SB</option>
+                        <option value="sponsoredDisplay">SD</option>
                     </select>
                 </div>
                  <div style={styles.controlGroup}>

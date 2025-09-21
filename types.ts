@@ -11,7 +11,7 @@ export type CampaignState = 'enabled' | 'paused' | 'archived';
 export interface Campaign {
   campaignId: number;
   name: string;
-  campaignType: 'sponsoredProducts'; // Assuming only SP for now
+  campaignType: 'sponsoredProducts' | 'sponsoredBrands' | 'sponsoredDisplay';
   targetingType: 'auto' | 'manual';
   state: CampaignState;
   dailyBudget: number;
