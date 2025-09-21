@@ -98,6 +98,21 @@ router.get('/sp-search-terms', async (req, res) => {
             whereClauses.push(`asin = $${queryParams.length}`);
         }
         
+        const groupByColumns = [
+            'campaign_name',
+            'campaign_id',
+            'ad_group_name',
+            'ad_group_id',
+            searchTermExpression,
+            'asin',
+            targetingExpression,
+        ];
+        
+        // CRITICAL FIX: Only add match_type to GROUP BY if it's an actual column, not a constant literal.
+        if (!isSD) {
+            groupByColumns.push(matchTypeExpression);
+        }
+
         const query = `
             SELECT 
                 campaign_name,
@@ -117,14 +132,7 @@ router.get('/sp-search-terms', async (req, res) => {
             FROM ${tableName}
             WHERE ${whereClauses.join(' AND ')}
             GROUP BY 
-                campaign_name, 
-                campaign_id,
-                ad_group_name,
-                ad_group_id,
-                ${searchTermExpression}, 
-                asin,
-                ${targetingExpression},
-                ${matchTypeExpression}
+                ${groupByColumns.join(',\n                ')}
             ORDER BY SUM(COALESCE(impressions, 0)) DESC NULLS LAST;
         `;
 
