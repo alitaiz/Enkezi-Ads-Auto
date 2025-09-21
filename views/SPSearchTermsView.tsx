@@ -443,37 +443,39 @@ export function SPSearchTermsView() {
         const day = String(d.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     };
+    
+    const checkDataIntegrity = useCallback(async (type: ReportType) => {
+        const today = new Date();
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() - 2);
+
+        const startDate = new Date(endDate);
+        startDate.setDate(endDate.getDate() - 6);
+
+        const startDateStr = formatDateForQuery(startDate);
+        const endDateStr = formatDateForQuery(endDate);
+        
+        const source = type === 'SP' ? 'searchTermReport' : 'sbSearchTermReport';
+
+        try {
+            const response = await fetch('/api/database/check-missing-dates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source, startDate: startDateStr, endDate: endDateStr }),
+            });
+            const data = await response.json();
+            if (response.ok) {
+                setMissingDates(data.missingDates || []);
+                setFetchStatus({});
+            }
+        } catch (err) {
+            console.error("Failed to run data integrity check:", err);
+        }
+    }, []);
 
     useEffect(() => {
-        const checkDataIntegrity = async () => {
-            const today = new Date();
-            const endDate = new Date(today);
-            endDate.setDate(today.getDate() - 2);
-
-            const startDate = new Date(endDate);
-            startDate.setDate(endDate.getDate() - 6);
-
-            const startDateStr = formatDateForQuery(startDate);
-            const endDateStr = formatDateForQuery(endDate);
-
-            try {
-                const response = await fetch('/api/database/check-missing-dates', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source: 'searchTermReport', startDate: startDateStr, endDate: endDateStr }),
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    setMissingDates(data.missingDates || []);
-                    setFetchStatus({});
-                }
-            } catch (err) {
-                console.error("Failed to run data integrity check:", err);
-            }
-        };
-
-        checkDataIntegrity();
-    }, []);
+        checkDataIntegrity(reportType);
+    }, [reportType, checkDataIntegrity]);
 
     useEffect(() => {
         setExpandedIds(new Set());
@@ -535,11 +537,12 @@ export function SPSearchTermsView() {
     
     const handleFetchMissingDay = async (date: string) => {
         setFetchStatus(prev => ({ ...prev, [date]: 'fetching' }));
+        const source = reportType === 'SP' ? 'searchTermReport' : 'sbSearchTermReport';
         try {
             const response = await fetch('/api/database/fetch-missing-day', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ source: 'searchTermReport', date }),
+                body: JSON.stringify({ source, date }),
             });
             const data = await response.json();
             if (!response.ok) throw new Error(data.error);
@@ -587,40 +590,18 @@ export function SPSearchTermsView() {
         <div style={styles.viewContainer}>
             <header style={styles.header}>
                  <div style={styles.headerTop}>
-                     {/* FIX: Changed `date.end` to `dateRange.end` to fix typo. */}
 <h1 style={styles.dateDisplay}>{formatDateRangeDisplay(dateRange.start, dateRange.end)}</h1>
                      <div style={{ position: 'relative' }}>
                          <button style={styles.dateButton} onClick={() => setDatePickerOpen(o => !o)}>Select Date Range</button>
                         {isDatePickerOpen && <DateRangePicker initialRange={dateRange} onApply={handleApplyDateRange} onClose={() => setDatePickerOpen(false)} />}
                     </div>
                  </div>
-                 <div style={styles.reportTypeSelector}>
-                    <button 
-                        style={reportType === 'SP' ? {...styles.reportTypeButton, ...styles.reportTypeButtonActive} : styles.reportTypeButton}
-                        onClick={() => handleReportTypeChange('SP')}
-                    >
-                        Sponsored Products
-                    </button>
-                    <button 
-                        style={reportType === 'SB' ? {...styles.reportTypeButton, ...styles.reportTypeButtonActive} : styles.reportTypeButton}
-                        onClick={() => handleReportTypeChange('SB')}
-                    >
-                        Sponsored Brands
-                    </button>
-                 </div>
-                 <div style={styles.headerTabs}>
-                     {tabs.map(tab => (
-                        <button key={tab.id} style={viewLevel === tab.id ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setViewLevel(tab.id)}>
-                            {tab.label}
-                        </button>
-                     ))}
-                 </div>
             </header>
             
             {missingDates.length > 0 && (
                 <div style={styles.integrityCheckContainer}>
                     <h3 style={styles.integrityTitle}>⚠️ Data Integrity Check</h3>
-                    <p>The following dates have missing report data in the last 7 days (ending 2 days ago). You can fetch them individually.</p>
+                    <p>The following dates have missing {reportType === 'SP' ? 'Sponsored Products' : 'Sponsored Brands'} report data in the last 7 days (ending 2 days ago). You can fetch them individually.</p>
                     {missingDates.map(date => (
                         <div key={date} style={styles.missingDateItem}>
                             <span>Missing data for: <strong>{date}</strong></span>
@@ -629,6 +610,28 @@ export function SPSearchTermsView() {
                     ))}
                 </div>
             )}
+            
+            <div style={styles.reportTypeSelector}>
+                <button 
+                    style={reportType === 'SP' ? {...styles.reportTypeButton, ...styles.reportTypeButtonActive} : styles.reportTypeButton}
+                    onClick={() => handleReportTypeChange('SP')}
+                >
+                    Sponsored Products
+                </button>
+                <button 
+                    style={reportType === 'SB' ? {...styles.reportTypeButton, ...styles.reportTypeButtonActive} : styles.reportTypeButton}
+                    onClick={() => handleReportTypeChange('SB')}
+                >
+                    Sponsored Brands
+                </button>
+            </div>
+            <div style={styles.headerTabs}>
+                 {tabs.map(tab => (
+                    <button key={tab.id} style={viewLevel === tab.id ? {...styles.tabButton, ...styles.tabButtonActive} : styles.tabButton} onClick={() => setViewLevel(tab.id)}>
+                        {tab.label}
+                    </button>
+                 ))}
+            </div>
             
             <div style={styles.actionsBar}>
                 <button style={styles.actionButton}><span>✎</span> Edit</button>
