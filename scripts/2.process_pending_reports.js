@@ -131,6 +131,39 @@ const saveSbDataToDB = async (client, reportData) => {
     console.log(`[DB] 💾 Inserted ${insertedCount} new SB records out of ${reportData.length} total from the report.`);
 };
 
+const saveSdDataToDB = async (client, reportData) => {
+    if (!reportData || reportData.length === 0) {
+        console.log("[DB] No SD records to save.");
+        return;
+    }
+
+    const extractAsinFromName = (name) => name?.match(/(B0[A-Z0-9]{8})/)?.[0] || null;
+
+    const query = `
+        INSERT INTO sponsored_display_targeting_report (
+            report_date, campaign_name, campaign_id, ad_group_name, ad_group_id,
+            target_id, targeting_expression, targeting_text, tactic,
+            impressions, clicks, cost, purchases_1d, sales_1d, units_sold_1d, asin
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+        )
+        ON CONFLICT (report_date, campaign_id, ad_group_id, target_id) DO NOTHING;
+    `;
+
+    let insertedCount = 0;
+    for (const item of reportData) {
+        const values = [
+            item.date, item.campaignName, item.campaignId, item.adGroupName, item.adGroupId,
+            item.targetId, item.targetingExpression, item.targetingText, item.tactic,
+            item.impressions, item.clicks, item.cost, item.purchases1d, item.sales1d, item.unitsSold1d,
+            extractAsinFromName(item.campaignName)
+        ];
+        const res = await client.query(query, values);
+        if (res.rowCount > 0) insertedCount++;
+    }
+    console.log(`[DB] 💾 Inserted ${insertedCount} new SD records out of ${reportData.length} total from the report.`);
+};
+
 
 const updateReportRequestStatus = async (client, reportId, status, url = null, reason = null) => {
     const query = `
@@ -173,6 +206,8 @@ const main = async () => {
                         await saveSpDataToDB(client, reportData);
                     } else if (report.report_type === 'sbSearchTerm') {
                         await saveSbDataToDB(client, reportData);
+                    } else if (report.report_type === 'sdTargeting') {
+                        await saveSdDataToDB(client, reportData);
                     } else {
                         console.warn(`[Processor] ⚠️  Unknown report type '${report.report_type}'. Cannot save data.`);
                     }

@@ -63,19 +63,31 @@ router.get('/sp-search-terms', async (req, res) => {
     if (!startDate || !endDate) {
         return res.status(400).json({ error: 'A startDate and endDate are required' });
     }
-    console.log(`[Server] Querying ${reportType} search terms for ASIN: ${asin || 'ALL'}, from ${startDate} to ${endDate}`);
+    console.log(`[Server] Querying ${reportType} search terms/targets for ASIN: ${asin || 'ALL'}, from ${startDate} to ${endDate}`);
     
     const isSB = reportType === 'SB';
-    
-    const tableName = isSB ? 'sponsored_brands_search_term_report' : 'sponsored_products_search_term_report';
-    const salesColumn = isSB ? 'sales' : 'sales_7d';
-    const ordersColumn = isSB ? 'purchases' : 'purchases_7d';
-    const unitsColumn = isSB ? 'units_sold' : 'units_sold_clicks_7d';
-    
-    // FIX: Conditionally define the targeting expression to handle schema differences
-    // and use it in both SELECT and GROUP BY to prevent errors.
-    const targetingExpression = isSB ? 'keyword_text' : 'COALESCE(keyword_text, targeting)';
+    const isSD = reportType === 'SD';
 
+    const tableName = isSB ? 'sponsored_brands_search_term_report' : isSD ? 'sponsored_display_targeting_report' : 'sponsored_products_search_term_report';
+    const salesColumn = isSD ? 'sales_1d' : isSB ? 'sales' : 'sales_7d';
+    const ordersColumn = isSD ? 'purchases_1d' : isSB ? 'purchases' : 'purchases_7d';
+    const unitsColumn = isSD ? 'units_sold_1d' : isSB ? 'units_sold' : 'units_sold_clicks_7d';
+    
+    // Dynamically select the correct text/expression columns based on report type
+    let targetingExpression, matchTypeExpression, searchTermExpression;
+    if (isSD) {
+        searchTermExpression = 'targeting_text';
+        targetingExpression = 'targeting_expression';
+        matchTypeExpression = 'tactic';
+    } else if (isSB) {
+        searchTermExpression = 'customer_search_term';
+        targetingExpression = 'keyword_text';
+        matchTypeExpression = 'match_type';
+    } else { // SP
+        searchTermExpression = 'customer_search_term';
+        targetingExpression = 'COALESCE(keyword_text, targeting)';
+        matchTypeExpression = 'match_type';
+    }
 
     try {
         const queryParams = [startDate, endDate];
@@ -92,10 +104,10 @@ router.get('/sp-search-terms', async (req, res) => {
                 campaign_id,
                 ad_group_name,
                 ad_group_id,
-                customer_search_term, 
+                ${searchTermExpression} as customer_search_term, 
                 asin,
                 ${targetingExpression} as targeting,
-                match_type,
+                ${matchTypeExpression} as match_type,
                 SUM(COALESCE(impressions, 0)) as impressions,
                 SUM(COALESCE(clicks, 0)) as clicks,
                 SUM(COALESCE(cost, 0)) as spend,
@@ -109,10 +121,10 @@ router.get('/sp-search-terms', async (req, res) => {
                 campaign_id,
                 ad_group_name,
                 ad_group_id,
-                customer_search_term, 
+                ${searchTermExpression}, 
                 asin,
                 ${targetingExpression},
-                match_type
+                ${matchTypeExpression}
             ORDER BY SUM(COALESCE(impressions, 0)) DESC NULLS LAST;
         `;
 
@@ -132,7 +144,7 @@ router.get('/sp-search-terms', async (req, res) => {
                 campaignId: row.campaign_id,
                 adGroupName: row.ad_group_name,
                 adGroupId: row.ad_group_id,
-                customerSearchTerm: row.customer_search_term,
+                customerSearchTerm: row.customer_search_term, // Frontend uses this generic key
                 impressions: parseInt(row.impressions || 0),
                 clicks: clicks,
                 costPerClick: costPerClick,
@@ -140,20 +152,20 @@ router.get('/sp-search-terms', async (req, res) => {
                 sevenDayTotalSales: sales,
                 sevenDayAcos: sevenDayAcos,
                 asin: row.asin,
-                targeting: row.targeting,
-                matchType: row.match_type,
+                targeting: row.targeting, // Frontend uses this generic key
+                matchType: row.match_type, // Frontend uses this generic key
                 sevenDayRoas: sevenDayRoas,
                 sevenDayTotalOrders: parseInt(row.seven_day_total_orders || 0),
                 sevenDayTotalUnits: parseInt(row.seven_day_total_units || 0)
             };
         });
         
-        console.log(`[Server] Found and transformed ${transformedData.length} aggregated ${reportType} search term records.`);
+        console.log(`[Server] Found and transformed ${transformedData.length} aggregated ${reportType} records.`);
         res.json(transformedData);
 
     } catch (error) {
-        console.error(`[Server] Error fetching ${reportType} search term data:`, error);
-        res.status(500).json({ error: `Failed to fetch ${reportType} search term data.` });
+        console.error(`[Server] Error fetching ${reportType} data:`, error);
+        res.status(500).json({ error: `Failed to fetch ${reportType} data.` });
     }
 });
 

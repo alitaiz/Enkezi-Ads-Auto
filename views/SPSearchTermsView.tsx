@@ -29,7 +29,7 @@ interface TreeNode {
 }
 
 type ViewLevel = 'campaigns' | 'adGroups' | 'keywords' | 'searchTerms';
-type ReportType = 'SP' | 'SB';
+type ReportType = 'SP' | 'SB' | 'SD';
 
 // --- Styles ---
 const styles: { [key: string]: React.CSSProperties } = {
@@ -455,7 +455,7 @@ export function SPSearchTermsView() {
         const startDateStr = formatDateForQuery(startDate);
         const endDateStr = formatDateForQuery(endDate);
         
-        const source = type === 'SP' ? 'searchTermReport' : 'sbSearchTermReport';
+        const source = type === 'SP' ? 'searchTermReport' : type === 'SB' ? 'sbSearchTermReport' : 'sdTargetingReport';
 
         try {
             const response = await fetch('/api/database/check-missing-dates', {
@@ -518,6 +518,7 @@ export function SPSearchTermsView() {
         setReportType(newType);
         setFlatData([]); // Clear old data
         handleApply(dateRange, newType);
+        checkDataIntegrity(newType);
     };
     
     useEffect(() => {
@@ -537,7 +538,7 @@ export function SPSearchTermsView() {
     
     const handleFetchMissingDay = async (date: string) => {
         setFetchStatus(prev => ({ ...prev, [date]: 'fetching' }));
-        const source = reportType === 'SP' ? 'searchTermReport' : 'sbSearchTermReport';
+        const source = reportType === 'SP' ? 'searchTermReport' : reportType === 'SB' ? 'sbSearchTermReport' : 'sdTargetingReport';
         try {
             const response = await fetch('/api/database/fetch-missing-day', {
                 method: 'POST',
@@ -623,6 +624,12 @@ export function SPSearchTermsView() {
                     onClick={() => handleReportTypeChange('SB')}
                 >
                     Sponsored Brands
+                </button>
+                <button 
+                    style={reportType === 'SD' ? {...styles.reportTypeButton, ...styles.reportTypeButtonActive} : styles.reportTypeButton}
+                    onClick={() => handleReportTypeChange('SD')}
+                >
+                    Sponsored Display
                 </button>
             </div>
             <div style={styles.headerTabs}>
