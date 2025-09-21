@@ -319,19 +319,54 @@ const RulesList = ({ rules, onEdit, onDelete, onDuplicate }: { rules: Automation
     </div>
 );
 
-const LogsTab = ({ logs, loading }: { logs: any[], loading: boolean}) => (
+const LogsTab = ({ logs, loading }: { logs: any[], loading: boolean}) => {
+    const formatDataWindow = (log: any) => {
+        const range = log.details?.data_date_range;
+        if (!range || !range.start || !range.end) return 'N/A';
+
+        const formatDate = (dateStr: string) => {
+            try {
+                // Add T00:00:00Z to ensure it's parsed as UTC midnight, avoiding timezone shifts.
+                return new Date(dateStr + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+            } catch (e) {
+                return 'Invalid Date';
+            }
+        };
+
+        let datePart;
+        if (range.note === 'Today so far') {
+            datePart = `Today (${formatDate(range.start)})`;
+        } else if (range.start === range.end) {
+            datePart = formatDate(range.start);
+        } else {
+            datePart = `${formatDate(range.start)} - ${formatDate(range.end)}`;
+        }
+
+        const sourcePart = range.sourceType ? ` (${range.sourceType})` : '';
+
+        return `${datePart}${sourcePart}`;
+    };
+    
+    return (
     <div>
         <h2 style={styles.contentTitle}>Automation History</h2>
         {loading ? <p>Loading logs...</p> : (
             <div style={{...styles.tableContainer, maxHeight: '600px', overflowY: 'auto'}}>
                 <table style={styles.logTable}>
-                    <thead><tr><th style={styles.th}>Time</th><th style={styles.th}>Rule</th><th style={styles.th}>Status</th><th style={styles.th}>Summary</th></tr></thead>
+                    <thead><tr>
+                        <th style={styles.th}>Time</th>
+                        <th style={styles.th}>Rule</th>
+                        <th style={styles.th}>Status</th>
+                        <th style={styles.th}>Data Window</th>
+                        <th style={styles.th}>Summary</th>
+                    </tr></thead>
                     <tbody>
                         {logs.map(log => (
                             <tr key={log.id}>
                                 <td style={styles.td}>{new Date(log.run_at).toLocaleString()}</td>
                                 <td style={styles.td}>{log.rule_name}</td>
                                 <td style={styles.td}>{log.status}</td>
+                                <td style={styles.td}>{formatDataWindow(log)}</td>
                                 <td style={styles.td} title={log.details ? JSON.stringify(log.details, null, 2) : ''}>{log.summary}</td>
                             </tr>
                         ))}
@@ -340,7 +375,8 @@ const LogsTab = ({ logs, loading }: { logs: any[], loading: boolean}) => (
             </div>
         )}
     </div>
-);
+    );
+};
 
 const RuleBuilderModal = ({ rule, modalTitle, onClose, onSave }: { rule: AutomationRule | null, modalTitle: string, onClose: () => void, onSave: (data: any) => void }) => {
     const [formData, setFormData] = useState<Partial<AutomationRule>>(() => {

@@ -55,17 +55,19 @@ const processRule = async (rule) => {
         
         // --- Process each ad type separately with the correct evaluator ---
         let finalResult = { summary: '', details: { actions_by_campaign: {} }, actedOnEntities: [] };
+        let finalDataDateRange = null;
 
         if (spCampaignIds.length > 0) {
-            const performanceData = await getPerformanceData({ ...rule, ad_type: 'SP' }, spCampaignIds);
-            if (performanceData.size > 0) {
+            const { performanceMap, dataDateRange } = await getPerformanceData({ ...rule, ad_type: 'SP' }, spCampaignIds);
+            if (!finalDataDateRange) finalDataDateRange = dataDateRange;
+            if (performanceMap.size > 0) {
                 let result;
                 if (rule.rule_type === 'BID_ADJUSTMENT') {
-                    result = await evaluateBidAdjustmentRule(rule, performanceData, throttledEntities);
+                    result = await evaluateBidAdjustmentRule(rule, performanceMap, throttledEntities);
                 } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
-                     result = await evaluateSearchTermAutomationRule(rule, performanceData, throttledEntities);
+                     result = await evaluateSearchTermAutomationRule(rule, performanceMap, throttledEntities);
                 } else if (rule.rule_type === 'BUDGET_ACCELERATION') {
-                    result = await evaluateBudgetAccelerationRule(rule, performanceData);
+                    result = await evaluateBudgetAccelerationRule(rule, performanceMap);
                 }
                 if (result) {
                     finalResult.actedOnEntities.push(...result.actedOnEntities);
@@ -76,9 +78,10 @@ const processRule = async (rule) => {
         
         const sbSdCampaignIds = [...sbCampaignIds, ...sdCampaignIds];
         if (sbSdCampaignIds.length > 0 && rule.rule_type === 'BID_ADJUSTMENT') {
-            const performanceData = await getPerformanceData({ ...rule, ad_type: 'SB' }, sbSdCampaignIds); // Assuming SB/SD data structure is similar enough
-            if (performanceData.size > 0) {
-                const result = await evaluateSbSdBidAdjustmentRule(rule, performanceData, throttledEntities);
+            const { performanceMap, dataDateRange } = await getPerformanceData({ ...rule, ad_type: 'SB' }, sbSdCampaignIds); // Assuming SB/SD data structure is similar enough
+            if (!finalDataDateRange) finalDataDateRange = dataDateRange;
+            if (performanceMap.size > 0) {
+                const result = await evaluateSbSdBidAdjustmentRule(rule, performanceMap, throttledEntities);
                  if (result) {
                     finalResult.actedOnEntities.push(...result.actedOnEntities);
                     Object.assign(finalResult.details.actions_by_campaign, result.details.actions_by_campaign);
@@ -101,6 +104,16 @@ const processRule = async (rule) => {
         
         // --- Final Logging ---
         const totalChanges = Object.values(finalResult.details.actions_by_campaign).reduce((sum, campaign) => sum + (campaign.changes?.length || 0) + (campaign.newNegatives?.length || 0), 0);
+        
+        // Add date range to details before logging
+        if (finalDataDateRange) {
+            finalResult.details.data_date_range = {
+                start: finalDataDateRange.start.toISOString().split('T')[0],
+                end: finalDataDateRange.end.toISOString().split('T')[0],
+                note: finalDataDateRange.note,
+                sourceType: finalDataDateRange.sourceType,
+            };
+        }
         
         if (totalChanges > 0) {
             const summaryParts = [];

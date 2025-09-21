@@ -365,7 +365,7 @@ const getBudgetAccelerationPerformanceData = async (rule, campaignIds, today) =>
 export const getPerformanceData = async (rule, campaignIds) => {
     if (!campaignIds || !Array.isArray(campaignIds) || campaignIds.length === 0) {
         console.log(`[RulesEngine DBG] Rule "${rule.name}" has an empty campaign scope. Skipping data fetch.`);
-        return new Map();
+        return { performanceMap: new Map(), dataDateRange: null };
     }
 
     const allTimeWindows = rule.config.conditionGroups.flatMap(g => g.conditions.map(c => c.timeWindow).filter(tw => tw !== 'TODAY'));
@@ -374,18 +374,32 @@ export const getPerformanceData = async (rule, campaignIds) => {
     const today = new Date(todayStr);
 
     let performanceMap;
-    if (rule.rule_type === 'BID_ADJUSTMENT' && (rule.ad_type === 'SB' || rule.ad_type === 'SD')) {
-        performanceMap = await getSbSdPerformanceData(rule, campaignIds, maxLookbackDays, today);
-    } else if (rule.rule_type === 'BID_ADJUSTMENT') {
-        performanceMap = await getBidAdjustmentPerformanceData(rule, campaignIds, maxLookbackDays, today);
+    let dataDateRange = {};
+
+    if (rule.rule_type === 'BID_ADJUSTMENT') {
+        const startDate = new Date(today);
+        startDate.setDate(today.getDate() - (maxLookbackDays - 1));
+        dataDateRange = { start: startDate, end: today, sourceType: 'Hybrid' };
+        if (rule.ad_type === 'SB' || rule.ad_type === 'SD') {
+            performanceMap = await getSbSdPerformanceData(rule, campaignIds, maxLookbackDays, today);
+        } else {
+            performanceMap = await getBidAdjustmentPerformanceData(rule, campaignIds, maxLookbackDays, today);
+        }
     } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
+        const endDate = new Date(today);
+        endDate.setDate(today.getDate() - 2);
+        const startDate = new Date(endDate);
+        startDate.setDate(endDate.getDate() - (maxLookbackDays - 1));
+        dataDateRange = { start: startDate, end: endDate, sourceType: 'Report Only' };
         performanceMap = await getSearchTermAutomationPerformanceData(rule, campaignIds, maxLookbackDays, today);
     } else if (rule.rule_type === 'BUDGET_ACCELERATION') {
+        dataDateRange = { start: today, end: today, note: 'Today so far', sourceType: 'Stream Only' };
         performanceMap = await getBudgetAccelerationPerformanceData(rule, campaignIds, today);
     } else {
         performanceMap = new Map();
+        dataDateRange = null;
     }
     
     console.log(`[RulesEngine DBG] Aggregated daily data for ${performanceMap.size} unique entities for rule "${rule.name}".`);
-    return performanceMap;
+    return { performanceMap, dataDateRange };
 };
