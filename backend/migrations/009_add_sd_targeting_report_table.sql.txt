@@ -1,28 +1,33 @@
 -- =============================================================================
--- Migration: Create Sponsored Display Targeting Report Table
+-- Migration: Create/Update Sponsored Display Targeting Report Table
 -- =============================================================================
 -- This script creates the table for storing daily Sponsored Display Targeting
--- report data. It is designed to be idempotent.
+-- report data. It is designed to be idempotent and safe to re-run.
 --
 
+-- Create the table with a minimal structure if it doesn't already exist.
 CREATE TABLE IF NOT EXISTS sponsored_display_targeting_report (
     id SERIAL PRIMARY KEY,
     report_date DATE NOT NULL,
-    campaign_name TEXT,
     campaign_id BIGINT,
-    ad_group_name TEXT,
     ad_group_id BIGINT,
-    target_id BIGINT,
-    targeting_expression TEXT,
-    targeting_text TEXT,
-    impressions BIGINT,
-    clicks BIGINT,
-    cost NUMERIC(12, 2),
-    purchases BIGINT,
-    sales NUMERIC(12, 2),
-    units_sold BIGINT,
-    asin VARCHAR(50)
+    target_id BIGINT
 );
+
+-- Add all required columns using the IF NOT EXISTS syntax to avoid errors on re-run.
+ALTER TABLE sponsored_display_targeting_report
+    ADD COLUMN IF NOT EXISTS campaign_name TEXT,
+    ADD COLUMN IF NOT EXISTS ad_group_name TEXT,
+    ADD COLUMN IF NOT EXISTS targeting_expression TEXT,
+    ADD COLUMN IF NOT EXISTS targeting_text TEXT,
+    ADD COLUMN IF NOT EXISTS impressions BIGINT,
+    ADD COLUMN IF NOT EXISTS clicks BIGINT,
+    ADD COLUMN IF NOT EXISTS cost NUMERIC(12, 2),
+    ADD COLUMN IF NOT EXISTS purchases BIGINT,
+    ADD COLUMN IF NOT EXISTS sales NUMERIC(12, 2),
+    ADD COLUMN IF NOT EXISTS units_sold BIGINT,
+    ADD COLUMN IF NOT EXISTS asin VARCHAR(50);
+
 
 -- Add indexes for performance
 CREATE INDEX IF NOT EXISTS idx_sdtr_report_date ON sponsored_display_targeting_report(report_date);
