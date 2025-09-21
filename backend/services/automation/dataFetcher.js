@@ -6,31 +6,68 @@ import { getLocalDateString } from './utils.js';
 const REPORTING_TIMEZONE = 'America/Los_Angeles';
 
 /**
- * Fetches performance data for BID_ADJUSTMENT rules using a HYBRID model.
- * - Near real-time data (last 2 days) from `raw_stream_events`.
- * - Settled historical data (>2 days ago) from `sponsored_products_search_term_report`.
+ * Fetches performance data for BID_ADJUSTMENT rules using a ROBUST HYBRID model.
+ * It checks for data completeness in the historical report for the required lookback period.
+ * For any missing days, it falls back to using near real-time data from `raw_stream_events`.
+ * This ensures rules always operate on a complete dataset, even with reporting delays.
  */
 const getBidAdjustmentPerformanceData = async (rule, campaignIds, maxLookbackDays, today) => {
-    const streamStartDate = new Date(today);
-    streamStartDate.setDate(today.getDate() - 1); // Covers today and yesterday.
+    // 1. Determine all dates required for the lookback period.
+    const requiredDates = [];
+    for (let i = 0; i < maxLookbackDays; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        requiredDates.push(d.toISOString().split('T')[0]);
+    }
+    const requiredDatesString = requiredDates.map(d => `'${d}'`).join(',');
 
-    const historicalEndDate = new Date(today);
-    historicalEndDate.setDate(today.getDate() - 2);
+    // 2. Check the historical report table to see which of the required dates are already present.
+    const checkQuery = `
+        SELECT DISTINCT report_date 
+        FROM sponsored_products_search_term_report 
+        WHERE report_date = ANY($1::date[]) AND campaign_id::text = ANY($2::text[]);
+    `;
+    const checkResult = await pool.query(checkQuery, [requiredDates, campaignIds.map(String)]);
+    const foundDatesInHistory = new Set(checkResult.rows.map(r => r.report_date.toISOString().split('T')[0]));
 
-    const historicalStartDate = new Date(historicalEndDate);
-    const historicalLookback = maxLookbackDays > 2 ? maxLookbackDays - 2 : 0;
-    if (historicalLookback > 0) {
-        historicalStartDate.setDate(historicalEndDate.getDate() - (historicalLookback - 1));
+    // 3. Identify missing dates that need to be fetched from the stream.
+    const missingDatesForStream = requiredDates.filter(d => !foundDatesInHistory.has(d));
+
+    console.log(`[DataFetcher] Rule "${rule.name}" | Lookback: ${maxLookbackDays} days.`);
+    console.log(`[DataFetcher] Found historical data for dates: ${[...foundDatesInHistory].join(', ') || 'None'}`);
+    console.log(`[DataFetcher] Missing dates (will use stream data): ${missingDatesForStream.join(', ') || 'None'}`);
+
+    const allRows = [];
+    const campaignIdParams = campaignIds.map(id => String(id));
+
+    // 4. Fetch data for the dates we found in the historical table.
+    if (foundDatesInHistory.size > 0) {
+        const historicalQuery = `
+            SELECT
+                report_date AS performance_date,
+                keyword_id::text AS entity_id_text,
+                COALESCE(keyword_text, targeting) AS entity_text,
+                match_type,
+                campaign_id::text AS campaign_id_text,
+                ad_group_id::text AS ad_group_id_text,
+                SUM(COALESCE(impressions, 0))::bigint AS impressions,
+                SUM(COALESCE(cost, 0))::numeric AS spend,
+                SUM(COALESCE(clicks, 0))::bigint AS clicks,
+                SUM(COALESCE(sales_1d, 0))::numeric AS sales,
+                SUM(COALESCE(purchases_1d, 0))::bigint AS orders
+            FROM sponsored_products_search_term_report
+            WHERE report_date = ANY($1::date[])
+              AND keyword_id IS NOT NULL
+              AND campaign_id::text = ANY($2::text[])
+            GROUP BY 1, 2, 3, 4, 5, 6;
+        `;
+        const historicalResult = await pool.query(historicalQuery, [[...foundDatesInHistory], campaignIdParams]);
+        allRows.push(...historicalResult.rows);
     }
 
-    const params = [campaignIds.map(id => id.toString())];
-    const campaignParamIndex = `$${params.length}`;
-    
-    const streamCampaignFilter = `AND (event_data->>'campaign_id') = ANY(${campaignParamIndex})`;
-    const historicalCampaignFilter = `AND campaign_id::text = ANY(${campaignParamIndex})`;
-
-    const query = `
-        WITH stream_data AS (
+    // 5. Fetch data for the missing dates from the stream table.
+    if (missingDatesForStream.length > 0) {
+        const streamQuery = `
             SELECT
                 ((event_data->>'time_window_start')::timestamptz AT TIME ZONE '${REPORTING_TIMEZONE}')::date AS performance_date,
                 COALESCE(event_data->>'keyword_id', event_data->>'target_id') AS entity_id_text,
@@ -45,39 +82,18 @@ const getBidAdjustmentPerformanceData = async (rule, campaignIds, maxLookbackDay
                 SUM(CASE WHEN event_type = 'sp-conversion' THEN (event_data->>'attributed_conversions_1d')::bigint ELSE 0 END) AS orders
             FROM raw_stream_events
             WHERE event_type IN ('sp-traffic', 'sp-conversion')
-              AND (event_data->>'time_window_start')::timestamptz >= ('${streamStartDate.toISOString().split('T')[0]}'::timestamp AT TIME ZONE '${REPORTING_TIMEZONE}')
+              AND ((event_data->>'time_window_start')::timestamptz AT TIME ZONE '${REPORTING_TIMEZONE}')::date = ANY($1::date[])
               AND COALESCE(event_data->>'keyword_id', event_data->>'target_id') IS NOT NULL
-              ${streamCampaignFilter}
-            GROUP BY 1, 2, 3, 4, 5, 6
-        ),
-        historical_data AS (
-            SELECT
-                report_date AS performance_date,
-                keyword_id::text AS entity_id_text,
-                COALESCE(keyword_text, targeting) AS entity_text,
-                match_type,
-                campaign_id::text AS campaign_id_text,
-                ad_group_id::text AS ad_group_id_text,
-                SUM(COALESCE(impressions, 0))::bigint AS impressions,
-                SUM(COALESCE(cost, 0))::numeric AS spend,
-                SUM(COALESCE(clicks, 0))::bigint AS clicks,
-                SUM(COALESCE(sales_1d, 0))::numeric AS sales,
-                SUM(COALESCE(purchases_1d, 0))::bigint AS orders
-            FROM sponsored_products_search_term_report
-            WHERE report_date >= '${historicalStartDate.toISOString().split('T')[0]}' AND report_date <= '${historicalEndDate.toISOString().split('T')[0]}'
-              AND keyword_id IS NOT NULL
-              ${historicalCampaignFilter}
-            GROUP BY 1, 2, 3, 4, 5, 6
-        )
-        SELECT * FROM stream_data
-        UNION ALL
-        SELECT * FROM historical_data;
-    `;
-    
-    const { rows } = await pool.query(query, params);
-    
+              AND (event_data->>'campaign_id') = ANY($2::text[])
+            GROUP BY 1, 2, 3, 4, 5, 6;
+        `;
+        const streamResult = await pool.query(streamQuery, [missingDatesForStream, campaignIdParams]);
+        allRows.push(...streamResult.rows);
+    }
+
+    // 6. Process the combined data into the final performance map.
     const performanceMap = new Map();
-    for (const row of rows) {
+    for (const row of allRows) {
         const key = row.entity_id_text;
         if (!key) continue;
 
@@ -93,16 +109,26 @@ const getBidAdjustmentPerformanceData = async (rule, campaignIds, maxLookbackDay
             });
         }
         
-        performanceMap.get(key).dailyData.push({
-            date: new Date(row.performance_date),
-            impressions: parseInt(row.impressions || 0, 10),
-            spend: parseFloat(row.spend || 0),
-            sales: parseFloat(row.sales || 0),
-            clicks: parseInt(row.clicks || 0, 10),
-            orders: parseInt(row.orders || 0, 10),
-        });
+        // This logic correctly handles multiple rows for the same entity on the same day
+        // (e.g., one from stream, one from history if logic overlaps) by aggregating them.
+        const entityData = performanceMap.get(key);
+        const dateStr = new Date(row.performance_date).toISOString().split('T')[0];
+        let dayEntry = entityData.dailyData.find(d => d.date.toISOString().split('T')[0] === dateStr);
+        
+        if (!dayEntry) {
+            dayEntry = {
+                date: new Date(row.performance_date),
+                impressions: 0, spend: 0, sales: 0, clicks: 0, orders: 0,
+            };
+            entityData.dailyData.push(dayEntry);
+        }
+        
+        dayEntry.impressions += parseInt(row.impressions || 0, 10);
+        dayEntry.spend += parseFloat(row.spend || 0);
+        dayEntry.sales += parseFloat(row.sales || 0);
+        dayEntry.clicks += parseInt(row.clicks || 0, 10);
+        dayEntry.orders += parseInt(row.orders || 0, 10);
     }
-
     return performanceMap;
 };
 

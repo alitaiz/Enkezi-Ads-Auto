@@ -22,16 +22,12 @@ Tài liệu này mô tả chi tiết luồng hoạt động từ đầu đến c
 
 Đây là bước cốt lõi, nơi logic đã được cập nhật để xử lý các loại rule một cách riêng biệt, đảm bảo tính chính xác của dữ liệu.
 
-#### 2.1. Đối với Rule `BID_ADJUSTMENT` (Hybrid Model - Dữ liệu hỗn hợp)
--   **Mục tiêu:** Có được bộ dữ liệu đầy đủ và mới nhất có thể, kéo dài đến tận ngày hiện tại.
--   **Nguồn dữ liệu Hybrid:**
-    1.  **Dữ liệu Lịch sử (cho các ngày > 2 ngày trước):** Lấy từ bảng `sponsored_products_search_term_report`. Nguồn này ổn định nhưng có độ trễ.
-    2.  **Dữ liệu Gần thời gian thực (cho 2 ngày gần nhất):** Lấy từ bảng `raw_stream_events` (Amazon Marketing Stream). Nguồn này nhanh nhưng dữ liệu có thể được điều chỉnh.
--   **Truy vấn SQL `UNION ALL`:** Hàm `getPerformanceData` xây dựng một câu lệnh SQL phức tạp sử dụng `UNION ALL` để kết hợp dữ liệu từ cả hai bảng trên vào một tập kết quả duy nhất.
--   **Ví dụ:** Nếu một rule chạy vào ngày **12 tháng 9** với lookback là **7 ngày**:
-    -   Hệ thống sẽ lấy dữ liệu từ ngày **5/9 đến 10/9** từ bảng **lịch sử**.
-    -   Hệ thống sẽ lấy dữ liệu từ ngày **11/9 đến 12/9** từ bảng **stream**.
-    -   Kết quả là một bộ dữ liệu đầy đủ 7 ngày, từ 5/9 đến 12/9.
+#### 2.1. Đối với Rule `BID_ADJUSTMENT` (Mô hình Dữ liệu Bền bỉ - Robust Data Model)
+-   **Mục tiêu:** Giải quyết tình trạng trễ dữ liệu từ báo cáo, hệ thống áp dụng một quy trình tra soát và bổ sung thông minh:
+    1.  **Kiểm tra Toàn vẹn Dữ liệu:** Trước khi tính toán, hệ thống xác định tất cả các ngày cần thiết trong khoảng thời gian phân tích (ví dụ: 7 ngày qua). Sau đó, nó kiểm tra bảng `sponsored_products_search_term_report` để xem những ngày nào đã có dữ liệu đầy đủ.
+    2.  **Xác định Lỗ hổng:** Hệ thống lập một danh sách các ngày bị thiếu dữ liệu trong báo cáo.
+    3.  **Lấp đầy bằng Dữ liệu Stream:** Đối với những ngày bị thiếu, hệ thống sẽ tự động truy vấn và tổng hợp dữ liệu từ bảng `raw_stream_events`. Dữ liệu này đảm bảo rằng không có ngày nào bị bỏ sót, ngay cả khi báo cáo chính thức bị trễ.
+-   **Kết quả:** Bằng cách kết hợp dữ liệu lịch sử đáng tin cậy với dữ liệu stream để lấp đầy các lỗ hổng, rule `BID_ADJUSTMENT` luôn hoạt động trên một bộ dữ liệu hoàn chỉnh, giúp tăng cường độ chính xác và hiệu quả của các quyết định tự động.
 
 #### 2.2. Đối với Rule `SEARCH_TERM_AUTOMATION` (Historical Model - Dữ liệu Lịch sử)
 -   **Nguồn dữ liệu Độc quyền:** Tính năng này **CHỈ** sử dụng dữ liệu từ bảng `sponsored_products_search_term_report`. Nó không sử dụng dữ liệu stream.
