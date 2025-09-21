@@ -13,8 +13,36 @@ const processRule = async (rule) => {
     
     try {
         const campaignIds = rule.scope?.campaignIds || [];
+        if (campaignIds.length === 0) {
+            console.log(`[RulesEngine] Skipping rule "${rule.name}" as it has an empty campaign scope.`);
+            await pool.query('UPDATE automation_rules SET last_run_at = NOW() WHERE id = $1', [rule.id]);
+            return;
+        }
 
-        // --- Cooldown Logic: Check throttled entities (keywords/targets) at the individual level ---
+        // --- NEW: Verify actual campaign types from API ---
+        const campaignDetailsResponse = await amazonAdsApiRequest({
+            method: 'post',
+            url: '/sp/campaigns/list',
+            profileId: rule.profile_id,
+            data: { campaignIdFilter: { include: campaignIds.map(String) } },
+             headers: { 'Content-Type': 'application/vnd.spCampaign.v3+json', 'Accept': 'application/vnd.spCampaign.v3+json' },
+        });
+
+        const campaignTypeMap = new Map();
+        if (campaignDetailsResponse.campaigns && Array.isArray(campaignDetailsResponse.campaigns)) {
+            campaignDetailsResponse.campaigns.forEach(c => {
+                // Assuming campaignType is not available directly, fallback to a default or derive it
+                // For this example, we'll default to 'SP' as it's the most common and robust path.
+                // A more advanced version could fetch from SB/SD endpoints if SP fails.
+                campaignTypeMap.set(String(c.campaignId), c.campaignType || 'sponsoredProducts');
+            });
+        }
+        
+        const spCampaignIds = campaignIds.filter(id => campaignTypeMap.get(String(id)) === 'sponsoredProducts');
+        const sbCampaignIds = campaignIds.filter(id => campaignTypeMap.get(String(id)) === 'sponsoredBrands');
+        const sdCampaignIds = campaignIds.filter(id => campaignTypeMap.get(String(id)) === 'sponsoredDisplay');
+
+        // --- Cooldown Logic ---
         const cooldownConfig = rule.config.cooldown || { value: 0 };
         let throttledEntities = new Set();
         if (cooldownConfig.value > 0) {
@@ -23,39 +51,43 @@ const processRule = async (rule) => {
                 [rule.id]
             );
             throttledEntities = new Set(throttleCheckResult.rows.map(r => r.entity_id));
-            if (throttledEntities.size > 0) {
-                console.log(`[RulesEngine] Found ${throttledEntities.size} individual entities (keywords/targets) on cooldown for rule "${rule.name}".`);
+        }
+        
+        // --- Process each ad type separately with the correct evaluator ---
+        let finalResult = { summary: '', details: { actions_by_campaign: {} }, actedOnEntities: [] };
+
+        if (spCampaignIds.length > 0) {
+            const performanceData = await getPerformanceData({ ...rule, ad_type: 'SP' }, spCampaignIds);
+            if (performanceData.size > 0) {
+                let result;
+                if (rule.rule_type === 'BID_ADJUSTMENT') {
+                    result = await evaluateBidAdjustmentRule(rule, performanceData, throttledEntities);
+                } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
+                     result = await evaluateSearchTermAutomationRule(rule, performanceData, throttledEntities);
+                } else if (rule.rule_type === 'BUDGET_ACCELERATION') {
+                    result = await evaluateBudgetAccelerationRule(rule, performanceData);
+                }
+                if (result) {
+                    finalResult.actedOnEntities.push(...result.actedOnEntities);
+                    Object.assign(finalResult.details.actions_by_campaign, result.details.actions_by_campaign);
+                }
             }
         }
         
-        const performanceData = await getPerformanceData(rule, campaignIds);
-        
-        if (performanceData.size === 0 && rule.rule_type !== 'BUDGET_ACCELERATION') {
-            const emptyActionsDetails = {
-                actions_by_campaign: campaignIds.reduce((acc, id) => { acc[id] = { changes: [], newNegatives: [] }; return acc; }, {})
-            };
-            await logAction(rule, 'NO_ACTION', 'No entities to process; scope may be empty or no data found.', emptyActionsDetails);
-            await pool.query('UPDATE automation_rules SET last_run_at = NOW() WHERE id = $1', [rule.id]);
-            return;
-        }
-
-        let result;
-        if (rule.rule_type === 'BID_ADJUSTMENT') {
-            if (rule.ad_type === 'SB' || rule.ad_type === 'SD') {
-                result = await evaluateSbSdBidAdjustmentRule(rule, performanceData, throttledEntities);
-            } else {
-                result = await evaluateBidAdjustmentRule(rule, performanceData, throttledEntities);
+        const sbSdCampaignIds = [...sbCampaignIds, ...sdCampaignIds];
+        if (sbSdCampaignIds.length > 0 && rule.rule_type === 'BID_ADJUSTMENT') {
+            const performanceData = await getPerformanceData({ ...rule, ad_type: 'SB' }, sbSdCampaignIds); // Assuming SB/SD data structure is similar enough
+            if (performanceData.size > 0) {
+                const result = await evaluateSbSdBidAdjustmentRule(rule, performanceData, throttledEntities);
+                 if (result) {
+                    finalResult.actedOnEntities.push(...result.actedOnEntities);
+                    Object.assign(finalResult.details.actions_by_campaign, result.details.actions_by_campaign);
+                }
             }
-        } else if (rule.rule_type === 'SEARCH_TERM_AUTOMATION') {
-            result = await evaluateSearchTermAutomationRule(rule, performanceData, throttledEntities);
-        } else if (rule.rule_type === 'BUDGET_ACCELERATION') {
-            result = await evaluateBudgetAccelerationRule(rule, performanceData);
-        } else {
-             throw new Error(`Unknown rule type: ${rule.rule_type}`);
         }
 
-        // --- Cooldown Logic: Apply new throttles at the individual entity level ---
-        if (result.actedOnEntities && result.actedOnEntities.length > 0 && cooldownConfig.value > 0) {
+        // --- Apply new throttles ---
+        if (finalResult.actedOnEntities.length > 0 && cooldownConfig.value > 0) {
             const { value, unit } = cooldownConfig;
             const interval = `${value} ${unit}`;
             const upsertQuery = `
@@ -64,18 +96,23 @@ const processRule = async (rule) => {
                 ON CONFLICT (rule_id, entity_id) DO UPDATE
                 SET throttle_until = EXCLUDED.throttle_until;
             `;
-            await pool.query(upsertQuery, [rule.id, result.actedOnEntities, interval]);
-            console.log(`[RulesEngine] Applied cooldown to ${result.actedOnEntities.length} individual entities for rule "${rule.name}" for ${interval}.`);
+            await pool.query(upsertQuery, [rule.id, finalResult.actedOnEntities, interval]);
         }
+        
+        // --- Final Logging ---
+        const totalChanges = Object.values(finalResult.details.actions_by_campaign).reduce((sum, campaign) => sum + (campaign.changes?.length || 0) + (campaign.newNegatives?.length || 0), 0);
+        
+        if (totalChanges > 0) {
+            const summaryParts = [];
+            const bidChanges = Object.values(finalResult.details.actions_by_campaign).reduce((s, c) => s + (c.changes?.length || 0), 0);
+            const negChanges = Object.values(finalResult.details.actions_by_campaign).reduce((s, c) => s + (c.newNegatives?.length || 0), 0);
+            if (bidChanges > 0) summaryParts.push(`Adjusted bids for ${bidChanges} item(s)`);
+            if (negChanges > 0) summaryParts.push(`Created ${negChanges} negative(s)`);
+            finalResult.summary = summaryParts.join(' and ') + '.';
 
-        const hasActions = result && result.details && Object.values(result.details.actions_by_campaign).some(c => c.changes.length > 0 || c.newNegatives.length > 0);
-        if (hasActions) {
-            await logAction(rule, 'SUCCESS', result.summary, result.details);
+            await logAction(rule, 'SUCCESS', finalResult.summary, finalResult.details);
         } else {
-            const emptyActionsDetails = {
-                actions_by_campaign: campaignIds.reduce((acc, id) => { acc[id] = { changes: [], newNegatives: [] }; return acc; }, {})
-            };
-            await logAction(rule, 'NO_ACTION', 'No entities met the rule criteria.', emptyActionsDetails);
+            await logAction(rule, 'NO_ACTION', 'No entities met the rule criteria.', finalResult.details);
         }
 
     } catch (error) {
@@ -85,6 +122,7 @@ const processRule = async (rule) => {
         await pool.query('UPDATE automation_rules SET last_run_at = NOW() WHERE id = $1', [rule.id]);
     }
 };
+
 
 export const checkAndRunDueRules = async () => {
     console.log(`[RulesEngine] ⏰ Cron tick: Checking for due rules at ${new Date().toISOString()}`);

@@ -291,10 +291,17 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                 method: 'get', url: '/sd/targets', profileId: rule.profile_id,
                 params: { targetIdFilter: allTargetIds.join(',') },
             });
-            (response.targets || []).forEach(t => {
-                const entity = performanceData.get(t.targetId.toString());
-                if (entity && typeof t.bid === 'number') entity.currentBid = t.bid;
-            });
+            // CRITICAL FIX: The SD /targets API returns an array directly, not an object with a 'targets' key.
+            if (Array.isArray(response)) {
+                response.forEach(t => {
+                    const entity = performanceData.get(t.targetId.toString());
+                    if (entity && typeof t.bid === 'number') {
+                        entity.currentBid = t.bid;
+                    }
+                });
+            } else {
+                console.warn(`[RulesEngine] Unexpected response structure from GET /sd/targets:`, response);
+            }
         }
     } catch (e) {
         console.error(`[RulesEngine] Failed to fetch current bids for ${rule.ad_type} rule.`, e.details || e);
@@ -308,7 +315,6 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
 
     // --- Phase 2: Fallback to Ad Group default bids ---
     if (entitiesWithoutBids.length > 0) {
-        // ONLY RUN THIS FALLBACK FOR SPONSORED BRANDS. SD Ad Groups do not have a defaultBid property.
         if (rule.ad_type === 'SB') {
             console.log(`[RulesEngine] Found ${entitiesWithoutBids.length} SB entities inheriting bids. Fetching ad group default bids...`);
             const adGroupIds = [...new Set(entitiesWithoutBids.map(e => e.adGroupId).filter(Boolean))];
@@ -334,8 +340,7 @@ export const evaluateSbSdBidAdjustmentRule = async (rule, performanceData, throt
                 }
             }
         } else if (rule.ad_type === 'SD') {
-            // For SD, there is no default bid fallback. Log a clear message explaining why they are skipped.
-            console.log(`[RulesEngine] Found ${entitiesWithoutBids.length} SD entities without an explicit bid override. They will be skipped as they likely use a dynamic bidding strategy set at the campaign level.`);
+            console.log(`[RulesEngine] Found ${entitiesWithoutBids.length} SD entities without a readable bid. They will be skipped. This can happen if they use a dynamic bidding strategy instead of a fixed bid.`);
         }
     }
     
