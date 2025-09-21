@@ -1,0 +1,52 @@
+-- =============================================================================
+-- Migration: Create Sponsored Brands Search Term Report Table
+-- =============================================================================
+-- This script creates the table for storing daily Sponsored Brands Search Term
+-- report data. It is designed to be idempotent.
+--
+
+CREATE TABLE IF NOT EXISTS sponsored_brands_search_term_report (
+    id SERIAL PRIMARY KEY,
+    report_date DATE NOT NULL,
+    campaign_name TEXT,
+    campaign_id BIGINT,
+    campaign_status VARCHAR(50),
+    campaign_budget_type VARCHAR(50),
+    campaign_budget_amount NUMERIC(12, 2),
+    ad_group_name TEXT,
+    ad_group_id BIGINT,
+    customer_search_term TEXT,
+    keyword_id BIGINT,
+    keyword_text TEXT,
+    match_type VARCHAR(50),
+    impressions BIGINT,
+    clicks BIGINT,
+    cost NUMERIC(12, 2),
+    cost_type VARCHAR(50),
+    purchases BIGINT,
+    sales NUMERIC(12, 2),
+    units_sold BIGINT,
+    asin VARCHAR(50)
+);
+
+-- Add indexes for performance
+CREATE INDEX IF NOT EXISTS idx_sbstr_report_date ON sponsored_brands_search_term_report(report_date);
+CREATE INDEX IF NOT EXISTS idx_sbstr_campaign_id ON sponsored_brands_search_term_report(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_sbstr_ad_group_id ON sponsored_brands_search_term_report(ad_group_id);
+CREATE INDEX IF NOT EXISTS idx_sbstr_keyword_id ON sponsored_brands_search_term_report(keyword_id);
+CREATE INDEX IF NOT EXISTS idx_sbstr_asin ON sponsored_brands_search_term_report(asin);
+
+-- Define a unique constraint to prevent duplicate rows.
+ALTER TABLE sponsored_brands_search_term_report
+DROP CONSTRAINT IF EXISTS unique_sb_search_term_entry;
+
+ALTER TABLE sponsored_brands_search_term_report
+ADD CONSTRAINT unique_sb_search_term_entry
+UNIQUE (report_date, campaign_id, ad_group_id, keyword_id, customer_search_term);
+
+-- =============================================================================
+-- Grant Permissions to Application User
+-- =============================================================================
+-- IMPORTANT: Replace 'enkezi' with the actual DB_USER from your .env file.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE sponsored_brands_search_term_report TO enkezi;
+GRANT USAGE, SELECT ON SEQUENCE sponsored_brands_search_term_report_id_seq TO enkezi;

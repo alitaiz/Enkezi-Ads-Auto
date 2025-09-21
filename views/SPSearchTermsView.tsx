@@ -29,6 +29,7 @@ interface TreeNode {
 }
 
 type ViewLevel = 'campaigns' | 'adGroups' | 'keywords' | 'searchTerms';
+type ReportType = 'SP' | 'SB';
 
 // --- Styles ---
 const styles: { [key: string]: React.CSSProperties } = {
@@ -87,6 +88,29 @@ const styles: { [key: string]: React.CSSProperties } = {
         color: '#d46b08',
         cursor: 'pointer',
     },
+    reportTypeSelector: {
+        display: 'flex',
+        gap: '10px',
+        marginBottom: '15px',
+        backgroundColor: '#f8f9fa',
+        padding: '8px',
+        borderRadius: '8px'
+    },
+    reportTypeButton: {
+        padding: '8px 16px',
+        border: '1px solid transparent',
+        borderRadius: '6px',
+        background: 'none',
+        cursor: 'pointer',
+        fontSize: '0.9rem',
+        fontWeight: '500'
+    },
+    reportTypeButtonActive: {
+        backgroundColor: 'white',
+        borderColor: 'var(--border-color)',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+        color: 'var(--primary-color)'
+    }
 };
 
 // --- Column Definitions ---
@@ -381,6 +405,7 @@ const TreeNodeRow: React.FC<{
 // --- Main View Component ---
 export function SPSearchTermsView() {
     const { cache, setCache } = useContext(DataCacheContext);
+    const [reportType, setReportType] = useState<ReportType>('SP');
     const [flatData, setFlatData] = useState<SPSearchTermReportData[]>(cache.spSearchTerms.data || []);
     const [viewLevel, setViewLevel] = useState<ViewLevel>('campaigns');
     const campaignsTree = useMemo(() => buildHierarchyByLevel(flatData, 'campaigns'), [flatData]);
@@ -466,14 +491,14 @@ export function SPSearchTermsView() {
         setSelectedIds(allIds);
     };
     
-    const handleApply = useCallback(async (range: {start: Date, end: Date}) => {
+    const handleApply = useCallback(async (range: {start: Date, end: Date}, type: ReportType) => {
         setLoading(true);
         setError(null);
         const startDate = formatDateForQuery(range.start);
         const endDate = formatDateForQuery(range.end);
 
         try {
-            const url = `/api/sp-search-terms?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
+            const url = `/api/sp-search-terms?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}&reportType=${type}`;
             const response = await fetch(url);
             if (!response.ok) throw new Error((await response.json()).error);
             const data: SPSearchTermReportData[] = await response.json();
@@ -486,20 +511,26 @@ export function SPSearchTermsView() {
             setLoading(false);
         }
     }, [setCache]);
+
+    const handleReportTypeChange = (newType: ReportType) => {
+        setReportType(newType);
+        setFlatData([]); // Clear old data
+        handleApply(dateRange, newType);
+    };
     
     useEffect(() => {
         if (cache.spSearchTerms.data.length === 0 && !cache.spSearchTerms.filters) {
             const end = new Date();
             const start = new Date();
             start.setDate(end.getDate() - 7);
-            handleApply({ start, end });
+            handleApply({ start, end }, reportType);
         }
-    }, [handleApply, cache.spSearchTerms.data.length, cache.spSearchTerms.filters]);
+    }, [handleApply, cache.spSearchTerms.data.length, cache.spSearchTerms.filters, reportType]);
     
     const handleApplyDateRange = (newRange: { start: Date; end: Date }) => {
         setDateRange(newRange);
         setDatePickerOpen(false);
-        handleApply(newRange);
+        handleApply(newRange, reportType);
     };
     
     const handleFetchMissingDay = async (date: string) => {
@@ -514,7 +545,7 @@ export function SPSearchTermsView() {
             if (!response.ok) throw new Error(data.error);
             setFetchStatus(prev => ({ ...prev, [date]: 'success' }));
             // Refresh main table data in case the fetched day is in the current view
-            handleApply(dateRange);
+            handleApply(dateRange, reportType);
              // Remove the date from the missing list upon success
             setMissingDates(prev => prev.filter(d => d !== date));
         } catch (err) {
@@ -556,11 +587,26 @@ export function SPSearchTermsView() {
         <div style={styles.viewContainer}>
             <header style={styles.header}>
                  <div style={styles.headerTop}>
-                     <h1 style={styles.dateDisplay}>{formatDateRangeDisplay(dateRange.start, dateRange.end)}</h1>
+                     {/* FIX: Changed `date.end` to `dateRange.end` to fix typo. */}
+<h1 style={styles.dateDisplay}>{formatDateRangeDisplay(dateRange.start, dateRange.end)}</h1>
                      <div style={{ position: 'relative' }}>
                          <button style={styles.dateButton} onClick={() => setDatePickerOpen(o => !o)}>Select Date Range</button>
                         {isDatePickerOpen && <DateRangePicker initialRange={dateRange} onApply={handleApplyDateRange} onClose={() => setDatePickerOpen(false)} />}
                     </div>
+                 </div>
+                 <div style={styles.reportTypeSelector}>
+                    <button 
+                        style={reportType === 'SP' ? {...styles.reportTypeButton, ...styles.reportTypeButtonActive} : styles.reportTypeButton}
+                        onClick={() => handleReportTypeChange('SP')}
+                    >
+                        Sponsored Products
+                    </button>
+                    <button 
+                        style={reportType === 'SB' ? {...styles.reportTypeButton, ...styles.reportTypeButtonActive} : styles.reportTypeButton}
+                        onClick={() => handleReportTypeChange('SB')}
+                    >
+                        Sponsored Brands
+                    </button>
                  </div>
                  <div style={styles.headerTabs}>
                      {tabs.map(tab => (

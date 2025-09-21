@@ -35,9 +35,12 @@ const normalizePercent = (value) => {
 // --- SP Search Term Report Endpoints ---
 
 router.get('/sp-search-terms-filters', async (req, res) => {
+    const { reportType = 'SP' } = req.query; // Default to SP
+    const tableName = reportType === 'SB' ? 'sponsored_brands_search_term_report' : 'sponsored_products_search_term_report';
+    
     try {
-        console.log(`[Server] Querying filters for SP Search Term Report view.`);
-        const asinsQuery = 'SELECT DISTINCT asin FROM sponsored_products_search_term_report WHERE asin IS NOT NULL ORDER BY asin ASC;';
+        console.log(`[Server] Querying filters for ${reportType} Search Term Report view.`);
+        const asinsQuery = `SELECT DISTINCT asin FROM ${tableName} WHERE asin IS NOT NULL ORDER BY asin ASC;`;
         
         const [asinsResult] = await Promise.all([
             pool.query(asinsQuery),
@@ -47,20 +50,26 @@ router.get('/sp-search-terms-filters', async (req, res) => {
         
         res.json({ asins, dates: [] });
     } catch (error) {
-        console.error("[Server] Error fetching SP search term filters:", error);
+        console.error(`[Server] Error fetching ${reportType} search term filters:`, error);
         if (error.code === '42P01') { // PostgreSQL 'undefined_table' error
-            return res.status(500).json({ error: "Database table for SP Search Term Report not found. Please run the migration script (003_add_sp_search_term_report_table.sql) to create it." });
+            return res.status(500).json({ error: `Database table for ${reportType} Search Term Report not found. Please run the appropriate migration script.` });
         }
         res.status(500).json({ error: "Failed to fetch filters. Please check the backend server logs for details." });
     }
 });
 
 router.get('/sp-search-terms', async (req, res) => {
-    const { asin, startDate, endDate } = req.query;
+    const { asin, startDate, endDate, reportType = 'SP' } = req.query;
     if (!startDate || !endDate) {
         return res.status(400).json({ error: 'A startDate and endDate are required' });
     }
-    console.log(`[Server] Querying SP search terms for ASIN: ${asin || 'ALL'}, from ${startDate} to ${endDate}`);
+    console.log(`[Server] Querying ${reportType} search terms for ASIN: ${asin || 'ALL'}, from ${startDate} to ${endDate}`);
+    
+    const tableName = reportType === 'SB' ? 'sponsored_brands_search_term_report' : 'sponsored_products_search_term_report';
+    const salesColumn = reportType === 'SB' ? 'sales' : 'sales_7d';
+    const ordersColumn = reportType === 'SB' ? 'purchases' : 'purchases_7d';
+    const unitsColumn = reportType === 'SB' ? 'units_sold' : 'units_sold_clicks_7d';
+
 
     try {
         const queryParams = [startDate, endDate];
@@ -79,15 +88,15 @@ router.get('/sp-search-terms', async (req, res) => {
                 ad_group_id,
                 customer_search_term, 
                 asin,
-                targeting, 
+                COALESCE(keyword_text, targeting) as targeting,
                 match_type,
                 SUM(COALESCE(impressions, 0)) as impressions,
                 SUM(COALESCE(clicks, 0)) as clicks,
                 SUM(COALESCE(cost, 0)) as spend,
-                SUM(COALESCE(sales_7d, 0)) as seven_day_total_sales,
-                SUM(COALESCE(purchases_7d, 0)) as seven_day_total_orders,
-                SUM(COALESCE(units_sold_clicks_7d, 0)) as seven_day_total_units
-            FROM sponsored_products_search_term_report 
+                SUM(COALESCE(${salesColumn}, 0)) as seven_day_total_sales,
+                SUM(COALESCE(${ordersColumn}, 0)) as seven_day_total_orders,
+                SUM(COALESCE(${unitsColumn}, 0)) as seven_day_total_units
+            FROM ${tableName}
             WHERE ${whereClauses.join(' AND ')}
             GROUP BY 
                 campaign_name, 
@@ -133,12 +142,12 @@ router.get('/sp-search-terms', async (req, res) => {
             };
         });
         
-        console.log(`[Server] Found and transformed ${transformedData.length} aggregated SP search term records.`);
+        console.log(`[Server] Found and transformed ${transformedData.length} aggregated ${reportType} search term records.`);
         res.json(transformedData);
 
     } catch (error) {
-        console.error("[Server] Error fetching SP search term data:", error);
-        res.status(500).json({ error: "Failed to fetch SP search term data." });
+        console.error(`[Server] Error fetching ${reportType} search term data:`, error);
+        res.status(500).json({ error: `Failed to fetch ${reportType} search term data.` });
     }
 });
 
