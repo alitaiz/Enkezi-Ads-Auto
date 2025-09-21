@@ -65,10 +65,16 @@ router.get('/sp-search-terms', async (req, res) => {
     }
     console.log(`[Server] Querying ${reportType} search terms for ASIN: ${asin || 'ALL'}, from ${startDate} to ${endDate}`);
     
-    const tableName = reportType === 'SB' ? 'sponsored_brands_search_term_report' : 'sponsored_products_search_term_report';
-    const salesColumn = reportType === 'SB' ? 'sales' : 'sales_7d';
-    const ordersColumn = reportType === 'SB' ? 'purchases' : 'purchases_7d';
-    const unitsColumn = reportType === 'SB' ? 'units_sold' : 'units_sold_clicks_7d';
+    const isSB = reportType === 'SB';
+    
+    const tableName = isSB ? 'sponsored_brands_search_term_report' : 'sponsored_products_search_term_report';
+    const salesColumn = isSB ? 'sales' : 'sales_7d';
+    const ordersColumn = isSB ? 'purchases' : 'purchases_7d';
+    const unitsColumn = isSB ? 'units_sold' : 'units_sold_clicks_7d';
+    
+    // FIX: Conditionally define the targeting expression to handle schema differences
+    // and use it in both SELECT and GROUP BY to prevent errors.
+    const targetingExpression = isSB ? 'keyword_text' : 'COALESCE(keyword_text, targeting)';
 
 
     try {
@@ -88,7 +94,7 @@ router.get('/sp-search-terms', async (req, res) => {
                 ad_group_id,
                 customer_search_term, 
                 asin,
-                COALESCE(keyword_text, targeting) as targeting,
+                ${targetingExpression} as targeting,
                 match_type,
                 SUM(COALESCE(impressions, 0)) as impressions,
                 SUM(COALESCE(clicks, 0)) as clicks,
@@ -105,7 +111,7 @@ router.get('/sp-search-terms', async (req, res) => {
                 ad_group_id,
                 customer_search_term, 
                 asin,
-                targeting, 
+                ${targetingExpression},
                 match_type
             ORDER BY SUM(COALESCE(impressions, 0)) DESC NULLS LAST;
         `;
