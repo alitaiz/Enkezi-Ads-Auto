@@ -142,10 +142,17 @@ router.get('/automation/logs', async (req, res) => {
                     summary = summaryParts.length > 0 ? summaryParts.join(' and ') + '.' : 'No changes were made for this campaign.';
                 }
 
+                // FIX: Construct a new details object that preserves the data_date_range
+                // while also providing the campaign-specific actions.
+                const newDetails = {
+                    ...campaignActions, // This has 'changes', 'newNegatives', etc.
+                    data_date_range: log.details.data_date_range // Add the date range back in
+                };
+
                 return {
                     ...log,
                     summary,
-                    details: campaignActions 
+                    details: newDetails // Use the newly constructed, complete details object
                 };
             }
             return null;
