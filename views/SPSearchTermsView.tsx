@@ -602,7 +602,7 @@ export function SPSearchTermsView() {
             {missingDates.length > 0 && (
                 <div style={styles.integrityCheckContainer}>
                     <h3 style={styles.integrityTitle}>⚠️ Data Integrity Check</h3>
-                    <p>The following dates have missing {reportType === 'SP' ? 'Sponsored Products' : 'Sponsored Brands'} report data in the last 7 days (ending 2 days ago). You can fetch them individually.</p>
+                    <p>The following dates have missing {reportType === 'SP' ? 'Sponsored Products' : reportType === 'SB' ? 'Sponsored Brands' : 'Sponsored Display'} report data in the last 7 days (ending 2 days ago). You can fetch them individually.</p>
                     {missingDates.map(date => (
                         <div key={date} style={styles.missingDateItem}>
                             <span>Missing data for: <strong>{date}</strong></span>

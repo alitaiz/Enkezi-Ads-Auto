@@ -15,13 +15,12 @@ CREATE TABLE IF NOT EXISTS sponsored_display_targeting_report (
     target_id BIGINT,
     targeting_expression TEXT,
     targeting_text TEXT,
-    tactic VARCHAR(100),
     impressions BIGINT,
     clicks BIGINT,
     cost NUMERIC(12, 2),
-    purchases_1d BIGINT,
-    sales_1d NUMERIC(12, 2),
-    units_sold_1d BIGINT,
+    purchases BIGINT,
+    sales NUMERIC(12, 2),
+    units_sold BIGINT,
     asin VARCHAR(50)
 );
 

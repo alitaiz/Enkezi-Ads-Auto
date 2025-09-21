@@ -33,11 +33,12 @@ const REPORT_TYPE_ID = 'sdTargeting';
 const createReportRequest = async (accessToken, dateStr) => {
     console.log(`[API] ➡️  Requesting SD Targeting report from Amazon for date: ${dateStr}`);
     
+    // Corrected columns based on Amazon Ads API documentation for sdTargeting report
     const sdColumns = [
         "date", "campaignName", "campaignId", "adGroupName", "adGroupId",
-        "targetId", "targetingExpression", "targetingText", "tactic",
+        "targetingId", "targetingExpression", "targetingText",
         "impressions", "clicks", "cost",
-        "purchases1d", "sales1d", "unitsSold1d"
+        "purchases", "sales", "unitsSold"
     ];
 
     const reportRequestBody = {
@@ -46,7 +47,8 @@ const createReportRequest = async (accessToken, dateStr) => {
         endDate: dateStr,
         configuration: {
             adProduct: "SPONSORED_DISPLAY",
-            groupBy: ["target"],
+            // Corrected groupBy value
+            groupBy: ["targeting"],
             columns: sdColumns,
             reportTypeId: REPORT_TYPE_ID,
             timeUnit: "DAILY",

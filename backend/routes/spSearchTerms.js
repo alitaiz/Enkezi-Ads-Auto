@@ -69,16 +69,16 @@ router.get('/sp-search-terms', async (req, res) => {
     const isSD = reportType === 'SD';
 
     const tableName = isSB ? 'sponsored_brands_search_term_report' : isSD ? 'sponsored_display_targeting_report' : 'sponsored_products_search_term_report';
-    const salesColumn = isSD ? 'sales_1d' : isSB ? 'sales' : 'sales_7d';
-    const ordersColumn = isSD ? 'purchases_1d' : isSB ? 'purchases' : 'purchases_7d';
-    const unitsColumn = isSD ? 'units_sold_1d' : isSB ? 'units_sold' : 'units_sold_clicks_7d';
+    const salesColumn = isSD ? 'sales' : isSB ? 'sales' : 'sales_7d';
+    const ordersColumn = isSD ? 'purchases' : isSB ? 'purchases' : 'purchases_7d';
+    const unitsColumn = isSD ? 'units_sold' : isSB ? 'units_sold' : 'units_sold_clicks_7d';
     
     // Dynamically select the correct text/expression columns based on report type
     let targetingExpression, matchTypeExpression, searchTermExpression;
     if (isSD) {
         searchTermExpression = 'targeting_text';
         targetingExpression = 'targeting_expression';
-        matchTypeExpression = 'tactic';
+        matchTypeExpression = `'N/A'`; // Tactic is not available in this report, so we use a placeholder.
     } else if (isSB) {
         searchTermExpression = 'customer_search_term';
         targetingExpression = 'keyword_text';

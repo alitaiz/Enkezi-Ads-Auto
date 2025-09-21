@@ -363,9 +363,9 @@ async function fetchSdTargetingForDay(dateStr) {
     // 1. Create Report
     const sdColumns = [
         "date", "campaignName", "campaignId", "adGroupName", "adGroupId",
-        "targetId", "targetingExpression", "targetingText", "tactic",
+        "targetingId", "targetingExpression", "targetingText",
         "impressions", "clicks", "cost",
-        "purchases1d", "sales1d", "unitsSold1d"
+        "purchases", "sales", "unitsSold"
     ];
     const reportRequestBody = {
         name: `SD Targeting Report for ${dateStr} (On-Demand)`,
@@ -373,7 +373,7 @@ async function fetchSdTargetingForDay(dateStr) {
         endDate: dateStr,
         configuration: {
             adProduct: "SPONSORED_DISPLAY",
-            groupBy: ["target"],
+            groupBy: ["targeting"],
             columns: sdColumns,
             reportTypeId: 'sdTargeting',
             timeUnit: "DAILY",
@@ -412,10 +412,10 @@ async function fetchSdTargetingForDay(dateStr) {
         const query = `
             INSERT INTO sponsored_display_targeting_report (
                 report_date, campaign_name, campaign_id, ad_group_name, ad_group_id,
-                target_id, targeting_expression, targeting_text, tactic,
-                impressions, clicks, cost, purchases_1d, sales_1d, units_sold_1d, asin
+                target_id, targeting_expression, targeting_text,
+                impressions, clicks, cost, purchases, sales, units_sold, asin
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
             )
             ON CONFLICT (report_date, campaign_id, ad_group_id, target_id) DO NOTHING;
         `;
@@ -423,8 +423,8 @@ async function fetchSdTargetingForDay(dateStr) {
         for (const item of reportData) {
             const values = [
                 item.date, item.campaignName, item.campaignId, item.adGroupName, item.adGroupId,
-                item.targetId, item.targetingExpression, item.targetingText, item.tactic,
-                item.impressions, item.clicks, item.cost, item.purchases1d, item.sales1d, item.unitsSold1d,
+                item.targetingId, item.targetingExpression, item.targetingText,
+                item.impressions, item.clicks, item.cost, item.purchases, item.sales, item.unitsSold,
                 extractAsinFromName(item.campaignName)
             ];
             await client.query(query, values);
