@@ -225,6 +225,7 @@ function useResizableColumns(initialWidths: number[]) {
         };
     }, [handleMouseMove, handleMouseUp]);
 
+    // FIX: The hook was returning an undefined function 'getHeaderProps'. It should return `handleMouseDown` aliased as `getHeaderProps`.
     return { widths, getHeaderProps: handleMouseDown, resizingColumnIndex };
 }
 
@@ -250,10 +251,8 @@ interface LogNegative {
     triggeringMetrics: TriggeringMetric[];
 }
 interface DataDateRange {
-    start: string;
-    end: string;
-    note?: string;
-    sourceType?: 'Hybrid' | 'Report Only' | 'Stream Only';
+    report?: { start: string; end: string };
+    stream?: { start: string; end: string };
 }
 interface CampaignLogDetails {
   changes?: LogChange[];
@@ -367,29 +366,29 @@ export function CampaignTable({
 
     const formatDataWindow = (log: AutomationLog) => {
         const range = log.details?.data_date_range;
-        if (!range || !range.start || !range.end) return 'N/A';
-
+        if (!range) return 'N/A';
+    
         const formatDate = (dateStr: string) => {
             try {
-                // Add T00:00:00Z to ensure it's parsed as UTC midnight, avoiding timezone shifts.
                 return new Date(dateStr + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-            } catch (e) {
-                return 'Invalid Date';
-            }
+            } catch (e) { return 'Invalid Date'; }
         };
-        
-        let datePart;
-        if (range.note === 'Today so far') {
-            datePart = `Today (${formatDate(range.start)})`;
-        } else if (range.start === range.end) {
-            datePart = formatDate(range.start);
-        } else {
-            datePart = `${formatDate(range.start)} - ${formatDate(range.end)}`;
-        }
-
-        const sourcePart = range.sourceType ? ` (${range.sourceType})` : '';
-
-        return `${datePart}${sourcePart}`;
+    
+        const formatRange = (rangeObj?: { start: string, end: string }) => {
+            if (!rangeObj || !rangeObj.start || !rangeObj.end) return null;
+            const start = formatDate(rangeObj.start);
+            const end = formatDate(rangeObj.end);
+            return start === end ? start : `${start} - ${end}`;
+        };
+    
+        const parts = [];
+        const reportRange = formatRange(range.report);
+        const streamRange = formatRange(range.stream);
+    
+        if (reportRange) parts.push(`Search Term Report: ${reportRange}`);
+        if (streamRange) parts.push(`Stream: ${streamRange}`);
+    
+        return parts.length > 0 ? parts.join(', ') : 'N/A';
     };
 
     const renderLogDetails = (log: AutomationLog) => {

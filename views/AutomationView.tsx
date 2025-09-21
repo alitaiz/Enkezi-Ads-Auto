@@ -322,29 +322,29 @@ const RulesList = ({ rules, onEdit, onDelete, onDuplicate }: { rules: Automation
 const LogsTab = ({ logs, loading }: { logs: any[], loading: boolean}) => {
     const formatDataWindow = (log: any) => {
         const range = log.details?.data_date_range;
-        if (!range || !range.start || !range.end) return 'N/A';
+        if (!range) return 'N/A';
 
         const formatDate = (dateStr: string) => {
             try {
-                // Add T00:00:00Z to ensure it's parsed as UTC midnight, avoiding timezone shifts.
                 return new Date(dateStr + 'T00:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-            } catch (e) {
-                return 'Invalid Date';
-            }
+            } catch (e) { return 'Invalid Date'; }
         };
 
-        let datePart;
-        if (range.note === 'Today so far') {
-            datePart = `Today (${formatDate(range.start)})`;
-        } else if (range.start === range.end) {
-            datePart = formatDate(range.start);
-        } else {
-            datePart = `${formatDate(range.start)} - ${formatDate(range.end)}`;
-        }
+        const formatRange = (rangeObj: { start: string, end: string }) => {
+            if (!rangeObj || !rangeObj.start || !rangeObj.end) return null;
+            const start = formatDate(rangeObj.start);
+            const end = formatDate(rangeObj.end);
+            return start === end ? start : `${start} - ${end}`;
+        };
 
-        const sourcePart = range.sourceType ? ` (${range.sourceType})` : '';
+        const parts = [];
+        const reportRange = formatRange(range.report);
+        const streamRange = formatRange(range.stream);
 
-        return `${datePart}${sourcePart}`;
+        if (reportRange) parts.push(`Search Term Report: ${reportRange}`);
+        if (streamRange) parts.push(`Stream: ${streamRange}`);
+
+        return parts.length > 0 ? parts.join(', ') : 'N/A';
     };
     
     return (
