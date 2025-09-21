@@ -33,7 +33,10 @@ export const evaluateBidAdjustmentRule = async (rule, performanceData, throttled
                 const chunk = allKeywordIds.slice(i, i + chunkSize);
                 const response = await amazonAdsApiRequest({
                     method: 'post', url: '/sp/keywords/list', profileId: rule.profile_id,
-                    data: { keywordIdFilter: { include: chunk } },
+                    data: { 
+                        keywordIdFilter: { include: chunk },
+                        stateFilter: { include: ["ENABLED", "PAUSED", "ARCHIVED"] }
+                    },
                     headers: { 'Content-Type': 'application/vnd.spKeyword.v3+json', 'Accept': 'application/vnd.spKeyword.v3+json' }
                 });
                 if (response.keywords) {
@@ -74,7 +77,10 @@ export const evaluateBidAdjustmentRule = async (rule, performanceData, throttled
                 const chunk = allTargetIds.slice(i, i + chunkSize);
                  const response = await amazonAdsApiRequest({
                     method: 'post', url: '/sp/targets/list', profileId: rule.profile_id,
-                    data: { targetIdFilter: { include: chunk } },
+                    data: { 
+                        targetIdFilter: { include: chunk },
+                        stateFilter: { include: ["ENABLED", "PAUSED", "ARCHIVED"] } 
+                    },
                     headers: { 'Content-Type': 'application/vnd.spTargetingClause.v3+json', 'Accept': 'application/vnd.spTargetingClause.v3+json' }
                 });
                 
@@ -673,7 +679,7 @@ export const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                     });
 
                     if (!actionsByCampaign[campaignPerf.campaignId]) {
-                        actionsByCampaign[campaignPerf.campaignId] = { changes: [], newNegatives: [] };
+                        actionsByCampaign[campaignId] = { changes: [], newNegatives: [] };
                     }
                     actionsByCampaign[campaignPerf.campaignId].changes.push({
                         entityType: 'campaign', entityId: campaignPerf.campaignId,
