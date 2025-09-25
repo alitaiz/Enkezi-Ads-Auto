@@ -211,15 +211,31 @@ const createMetrics = (row: SPSearchTermReportData): Metrics => ({
 const emptyMetrics = (): Metrics => ({ impressions: 0, clicks: 0, spend: 0, sales: 0, orders: 0, units: 0, asins: [] });
 
 const aggregateSearchTerms = (flatData: SPSearchTermReportData[]): TreeNode[] => {
-    const terms = new Map<string, Metrics>();
+    const terms = new Map<string, { metrics: Metrics; searchTerm: string; asin: string }>();
+
     flatData.forEach(row => {
-        const term = row.customerSearchTerm;
-        if (!terms.has(term)) terms.set(term, emptyMetrics());
-        addMetrics(terms.get(term)!, createMetrics(row));
+        // A unique row requires a search term and an ASIN.
+        if (!row.customerSearchTerm || !row.asin) return;
+        
+        // Use a composite key of term + ASIN to group metrics uniquely.
+        const key = `${row.customerSearchTerm}|${row.asin}`;
+        
+        if (!terms.has(key)) {
+            terms.set(key, {
+                metrics: emptyMetrics(),
+                searchTerm: row.customerSearchTerm,
+                asin: row.asin
+            });
+        }
+        // Add the metrics from the current row to the aggregated data for this key.
+        addMetrics(terms.get(key)!.metrics, createMetrics(row));
     });
-    return Array.from(terms.entries()).map(([name, metrics]) => ({
-        id: `st-${name}`,
-        name,
+
+    return Array.from(terms.values()).map(({ metrics, searchTerm, asin }) => ({
+        // The ID must also be unique.
+        id: `st-${searchTerm}-${asin}`,
+        // The display name is just the search term.
+        name: searchTerm,
         type: 'searchTerm',
         keywordType: 'search term',
         metrics,
