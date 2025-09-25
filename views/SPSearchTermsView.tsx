@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback, useContext } from 'react';
-import { SPSearchTermReportData, SPFilterOptions } from '../types';
+import React, { useState, useMemo, useEffect, useCallback, useContext, useRef } from 'react';
+import { SPSearchTermReportData } from '../types';
 import { formatNumber, formatPercent, formatPrice } from '../utils';
 import { DataCacheContext } from '../contexts/DataCacheContext';
 import { DateRangePicker } from './components/DateRangePicker';
@@ -12,9 +12,7 @@ interface Metrics {
     sales: number;
     orders: number;
     units: number;
-    asin?: string | null;
-    asins?: string[];
-    productCount?: number;
+    asins: string[];
 }
 
 interface TreeNode {
@@ -40,16 +38,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     headerTabs: { display: 'flex', gap: '5px', borderBottom: '1px solid var(--border-color)' },
     tabButton: { padding: '10px 15px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1rem', borderBottom: '3px solid transparent', color: '#555', fontWeight: 500 },
     tabButtonActive: { color: 'var(--primary-color)', borderBottom: '3px solid var(--primary-color)', fontWeight: 600 },
-    actionsBar: { display: 'flex', alignItems: 'center', gap: '15px', padding: '15px 0' },
-    actionButton: { padding: '8px 15px', border: '1px solid var(--border-color)', borderRadius: '4px', background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' },
     tableContainer: { backgroundColor: 'var(--card-background-color)', borderRadius: 'var(--border-radius)', boxShadow: 'var(--box-shadow)', overflowX: 'auto' },
     table: { width: '100%', minWidth: '2200px', borderCollapse: 'collapse', tableLayout: 'fixed' },
-    th: { padding: '12px 10px', textAlign: 'left', borderBottom: '2px solid var(--border-color)', backgroundColor: '#f8f9fa', fontWeight: 600, whiteSpace: 'nowrap' },
+    th: { padding: '12px 10px', textAlign: 'left', borderBottom: '2px solid var(--border-color)', backgroundColor: '#f8f9fa', fontWeight: 600, whiteSpace: 'nowrap', position: 'relative', overflow: 'hidden', textOverflow: 'ellipsis' },
+    sortableHeader: { display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' },
     td: { padding: '10px', borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
     nameCell: { display: 'flex', alignItems: 'center', gap: '8px' },
     expandIcon: { cursor: 'pointer', width: '15px', textAlign: 'center', transition: 'transform 0.2s', userSelect: 'none' },
-    statusCell: { display: 'flex', alignItems: 'center', gap: '5px' },
-    statusDropdownIcon: { fontSize: '0.6em' },
     error: { color: 'var(--danger-color)', padding: '20px', backgroundColor: '#fdd', borderRadius: 'var(--border-radius)', marginTop: '20px' },
     message: { textAlign: 'center', padding: '50px', fontSize: '1.2rem', color: '#666' },
     dateButton: {
@@ -110,32 +105,83 @@ const styles: { [key: string]: React.CSSProperties } = {
         borderColor: 'var(--border-color)',
         boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
         color: 'var(--primary-color)'
-    }
+    },
+     link: {
+        textDecoration: 'none',
+        color: 'var(--primary-color)',
+        fontWeight: 500,
+    },
 };
+
+const resizerStyles: { [key: string]: React.CSSProperties } = {
+  resizer: {
+    position: 'absolute', right: 0, top: 0, height: '100%', width: '5px',
+    cursor: 'col-resize', userSelect: 'none', touchAction: 'none',
+  },
+  resizing: { background: 'var(--primary-color)' }
+};
+
+function useResizableColumns(initialWidths: number[]) {
+    const [widths, setWidths] = useState(initialWidths);
+    const [resizingColumnIndex, setResizingColumnIndex] = useState<number | null>(null);
+    const currentColumnIndex = useRef<number | null>(null);
+    const startX = useRef(0);
+    const startWidth = useRef(0);
+
+    const handleMouseDown = useCallback((index: number, e: React.MouseEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        currentColumnIndex.current = index;
+        setResizingColumnIndex(index);
+        startX.current = e.clientX;
+        startWidth.current = widths[index];
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    }, [widths]);
+
+    const handleMouseMove = useCallback((e: MouseEvent) => {
+        if (currentColumnIndex.current === null) return;
+        const deltaX = e.clientX - startX.current;
+        const newWidth = Math.max(startWidth.current + deltaX, 80); // Min width
+        setWidths(prev => {
+            const newWidths = [...prev];
+            newWidths[currentColumnIndex.current!] = newWidth;
+            return newWidths;
+        });
+    }, []);
+
+    const handleMouseUp = useCallback(() => {
+        currentColumnIndex.current = null;
+        setResizingColumnIndex(null);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    }, []);
+
+    useEffect(() => {
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [handleMouseMove, handleMouseUp]);
+
+    return { widths, getHeaderProps: handleMouseDown, resizingColumnIndex };
+}
 
 // --- Column Definitions ---
 const columns = [
-    { id: 'name', label: 'Name', width: '350px' },
-    { id: 'asin', label: 'ASIN', width: '200px' },
-    { id: 'status', label: 'Status', width: '120px' },
-    { id: 'costPerOrder', label: 'Cost per order', width: '120px' },
-    { id: 'spend', label: 'Ad spend', width: '100px' },
-    { id: 'clicks', label: 'Clicks', width: '100px' },
-    { id: 'conversion', label: 'Conversion', width: '110px' },
-    { id: 'orders', label: 'Orders', width: '100px' },
-    { id: 'units', label: 'Units', width: '100px' },
-    { id: 'cpc', label: 'CPC', width: '100px' },
-    { id: 'sales', label: 'PPC sales', width: '110px' },
-    { id: 'impressions', label: 'Impressions', width: '110px' },
-    { id: 'sku', label: 'Same SKU/All SKU\'s', width: '150px' },
-    { id: 'acos', label: 'ACOS', width: '100px' },
-    { id: 'profit', label: 'Profit', width: '100px' },
-    { id: 'tos', label: 'Top-of-search impression share', width: '200px' },
-    { id: 'breakEvenAcos', label: 'Break even ACOS', width: '140px' },
-    { id: 'breakEvenBid', label: 'Break Even Bid', width: '130px' },
-    { id: 'dailyBudget', label: 'Daily budget', width: '120px' },
-    { id: 'budgetUtil', label: 'Budget utilization', width: '140px' },
-    { id: 'currentBid', label: 'Current bid', width: '120px' },
+    { id: 'name', label: 'Name', width: 350 },
+    { id: 'asin', label: 'ASIN(s)', width: 200 },
+    { id: 'spend', label: 'Ad spend', width: 100 },
+    { id: 'sales', label: 'PPC sales', width: 110 },
+    { id: 'acos', label: 'ACOS', width: 100 },
+    { id: 'orders', label: 'Orders', width: 100 },
+    { id: 'clicks', label: 'Clicks', width: 100 },
+    { id: 'impressions', label: 'Impressions', width: 110 },
+    { id: 'cpc', label: 'CPC', width: 100 },
+    { id: 'conversion', label: 'Conversion', width: 110 },
+    { id: 'costPerOrder', label: 'Cost per order', width: 120 },
+    { id: 'units', label: 'Units', width: 100 },
 ];
 
 
@@ -147,9 +193,10 @@ const addMetrics = (target: Metrics, source: Metrics) => {
     target.sales += source.sales;
     target.orders += source.orders;
     target.units += source.units;
-    if (source.asin) {
-        target.asins = target.asins || [];
-        if (!target.asins.includes(source.asin)) target.asins.push(source.asin);
+    if (source.asins && source.asins[0]) {
+        if (!target.asins.includes(source.asins[0])) {
+            target.asins.push(source.asins[0]);
+        }
     }
 };
 const createMetrics = (row: SPSearchTermReportData): Metrics => ({
@@ -159,9 +206,9 @@ const createMetrics = (row: SPSearchTermReportData): Metrics => ({
     sales: row.sevenDayTotalSales,
     orders: row.sevenDayTotalOrders,
     units: row.sevenDayTotalUnits,
-    asin: row.asin,
+    asins: row.asin ? [row.asin] : [],
 });
-const emptyMetrics = (): Metrics => ({ impressions: 0, clicks: 0, spend: 0, sales: 0, orders: 0, units: 0, productCount: 0, asins: [] });
+const emptyMetrics = (): Metrics => ({ impressions: 0, clicks: 0, spend: 0, sales: 0, orders: 0, units: 0, asins: [] });
 
 const aggregateSearchTerms = (flatData: SPSearchTermReportData[]): TreeNode[] => {
     const terms = new Map<string, Metrics>();
@@ -180,23 +227,8 @@ const aggregateSearchTerms = (flatData: SPSearchTermReportData[]): TreeNode[] =>
 };
 
 const buildHierarchyByLevel = (flatData: SPSearchTermReportData[], level: ViewLevel): TreeNode[] => {
-    // For the search term and keyword tabs we only need aggregated data,
-    // so avoid building the full campaign → ad group hierarchy which is
-    // expensive for large datasets and previously caused the UI to freeze.
     if (level === 'searchTerms') {
-        const terms = new Map<string, Metrics>();
-        flatData.forEach(row => {
-            const term = row.customerSearchTerm;
-            if (!terms.has(term)) terms.set(term, emptyMetrics());
-            addMetrics(terms.get(term)!, createMetrics(row));
-        });
-        return Array.from(terms.entries()).map(([name, metrics]) => ({
-            id: `st-${name}`,
-            name,
-            type: 'searchTerm',
-            keywordType: 'search term',
-            metrics,
-        }));
+        return aggregateSearchTerms(flatData);
     }
 
     if (level === 'keywords') {
@@ -277,7 +309,6 @@ const buildHierarchyByLevel = (flatData: SPSearchTermReportData[], level: ViewLe
             campaignNode.children!.push(adGroupNode);
         }
         addMetrics(adGroupNode.metrics, rowMetrics);
-        adGroupNode.metrics.productCount = (adGroupNode.metrics.productCount || 0) + 1; // Assuming 1 product per row for simplicity
 
         let keywordNode = adGroupNode.children!.find(c => c.id === `k-${row.targeting}`);
         if (!keywordNode) {
@@ -326,7 +357,7 @@ const TreeNodeRow: React.FC<{
     const isExpanded = expandedIds.has(node.id);
     const hasChildren = node.children && node.children.length > 0;
     
-    const { impressions, clicks, spend, sales, orders, units, asins, productCount } = node.metrics;
+    const { impressions, clicks, spend, sales, orders, units, asins } = node.metrics;
     const cpc = clicks > 0 ? spend / clicks : 0;
     const acos = sales > 0 ? spend / sales : 0;
     const conversion = clicks > 0 ? orders / clicks : 0;
@@ -337,12 +368,11 @@ const TreeNodeRow: React.FC<{
         switch (columnId) {
             case 'name': 
                 let nameSuffix = '';
-                if(node.keywordType === 'keyword') nameSuffix = ' (keyword)';
-                else if(node.keywordType === 'search term') nameSuffix = ' (search term)';
+                if(node.keywordType === 'keyword') nameSuffix = ` (${node.matchType})`;
                 
                 return (
                 <div style={{ ...styles.nameCell, paddingLeft: `${level * 25}px` }}>
-                    <input type="checkbox" checked={selectedIds.has(node.id)} onChange={e => onSelect(node.id, e.target.checked)} />
+                    <input type="checkbox" checked={selectedIds.has(node.id)} onChange={e => onSelect(node.id, e.target.checked)} onClick={e => e.stopPropagation()} />
                     {hasChildren && (
                         <span
                             style={{ ...styles.expandIcon, transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
@@ -355,26 +385,22 @@ const TreeNodeRow: React.FC<{
                 </div>
             );
 
-            case 'asin':
-                if (node.type === 'adGroup') return `ASINs: ${productCount || 1}`;
-
-                if (node.type === 'campaign') {
-                    const asinList = asins || [];
-                    if (asinList.length === 1) {
-                        const single = asinList[0];
-                        return <img src={`https://m.media-amazon.com/images/I/${single}.jpg`} alt={single} height="30" onError={(e) => (e.currentTarget.style.display='none')} />;
-                    }
-                    if (asinList.length > 1) {
-                        return (
-                            <span style={{ color: 'var(--primary-color)', cursor: 'pointer', textDecoration: 'underline' }}
-                                onClick={() => alert(asinList.join('\n'))}>
-                                ASINS
-                            </span>
-                        );
-                    }
+            case 'asin': {
+                const asinList = asins || [];
+                if (asinList.length === 1) {
+                    const singleAsin = asinList[0];
+                    return <a href={`https://www.amazon.com/dp/${singleAsin}`} target="_blank" rel="noopener noreferrer" style={styles.link}>{singleAsin}</a>;
+                }
+                if (asinList.length > 1) {
+                    return (
+                        <span style={{ color: 'var(--primary-color)', cursor: 'pointer', textDecoration: 'underline' }}
+                            onClick={(e) => { e.stopPropagation(); alert(`Associated ASINs:\n${asinList.join('\n')}`); }}>
+                            {asinList.length} ASINs
+                        </span>
+                    );
                 }
                 return '—';
-            case 'status': return node.type !== 'searchTerm' ? <div style={styles.statusCell}>Active <span style={styles.statusDropdownIcon}>▼</span></div> : '—';
+            }
             case 'costPerOrder': return formatPrice(costPerOrder);
             case 'spend': return spend < 0 ? `-${formatPrice(Math.abs(spend))}` : formatPrice(spend);
             case 'clicks': return formatNumber(clicks);
@@ -408,24 +434,7 @@ export function SPSearchTermsView() {
     const [reportType, setReportType] = useState<ReportType>('SP');
     const [flatData, setFlatData] = useState<SPSearchTermReportData[]>(cache.spSearchTerms.data || []);
     const [viewLevel, setViewLevel] = useState<ViewLevel>('campaigns');
-    const campaignsTree = useMemo(() => buildHierarchyByLevel(flatData, 'campaigns'), [flatData]);
-    const adGroupsTree = useMemo(() => buildHierarchyByLevel(flatData, 'adGroups'), [flatData]);
-    const keywordsTree = useMemo(() => buildHierarchyByLevel(flatData, 'keywords'), [flatData]);
-    const aggregatedSearchTerms = useMemo(() => aggregateSearchTerms(flatData), [flatData]);
-
-    const treeData = useMemo<TreeNode[]>(() => {
-        switch (viewLevel) {
-            case 'adGroups':
-                return adGroupsTree;
-            case 'keywords':
-                return keywordsTree;
-            case 'searchTerms':
-                return aggregatedSearchTerms;
-            case 'campaigns':
-            default:
-                return campaignsTree;
-        }
-    }, [viewLevel, campaignsTree, adGroupsTree, keywordsTree, aggregatedSearchTerms]);
+    
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -436,6 +445,57 @@ export function SPSearchTermsView() {
 
     const [dateRange, setDateRange] = useState(cache.spSearchTerms.filters ? { start: new Date(cache.spSearchTerms.filters.startDate), end: new Date(cache.spSearchTerms.filters.endDate)} : { start: new Date(), end: new Date() });
     const [isDatePickerOpen, setDatePickerOpen] = useState(false);
+    
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' }>({ key: 'impressions', direction: 'descending' });
+
+    const initialWidths = useMemo(() => columns.map(c => c.width), []);
+    const { widths, getHeaderProps, resizingColumnIndex } = useResizableColumns(initialWidths);
+
+    const treeData = useMemo<TreeNode[]>(() => {
+        return buildHierarchyByLevel(flatData, viewLevel);
+    }, [flatData, viewLevel]);
+
+    const getMetricValue = (node: TreeNode, key: string): string | number => {
+        const { metrics } = node;
+        switch (key) {
+            case 'name': return node.name.toLowerCase();
+            case 'impressions': return metrics.impressions;
+            case 'clicks': return metrics.clicks;
+            case 'spend': return metrics.spend;
+            case 'sales': return metrics.sales;
+            case 'orders': return metrics.orders;
+            case 'units': return metrics.units;
+            case 'cpc': return metrics.clicks > 0 ? metrics.spend / metrics.clicks : 0;
+            case 'acos': return metrics.sales > 0 ? metrics.spend / metrics.sales : 0;
+            case 'conversion': return metrics.clicks > 0 ? metrics.orders / metrics.clicks : 0;
+            case 'costPerOrder': return metrics.orders > 0 ? metrics.spend / metrics.orders : 0;
+            case 'asin': return (metrics.asins || []).join(', ');
+            default: return 0;
+        }
+    };
+
+    const sortedTreeData = useMemo(() => {
+        let sortableItems = [...treeData];
+        if (sortConfig.key) {
+            sortableItems.sort((a, b) => {
+                const aValue = getMetricValue(a, sortConfig.key);
+                const bValue = getMetricValue(b, sortConfig.key);
+
+                if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
+                if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
+                return 0;
+            });
+        }
+        return sortableItems;
+    }, [treeData, sortConfig]);
+
+    const requestSort = (key: string) => {
+        let direction: 'ascending' | 'descending' = 'descending';
+        if (sortConfig.key === key && sortConfig.direction === 'descending') {
+            direction = 'ascending';
+        }
+        setSortConfig({ key, direction });
+    };
 
     const formatDateForQuery = (d: Date) => {
         const year = d.getFullYear();
@@ -640,13 +700,6 @@ export function SPSearchTermsView() {
                  ))}
             </div>
             
-            <div style={styles.actionsBar}>
-                <button style={styles.actionButton}><span>✎</span> Edit</button>
-                <button style={styles.actionButton}><span>✓</span> Accept recommendations</button>
-                <button style={styles.actionButton}><span>⤓</span></button>
-                <button style={styles.actionButton}><span>❐</span></button>
-            </div>
-            
             {error && <div style={styles.error}>{error}</div>}
 
             <div style={styles.tableContainer}>
@@ -655,16 +708,27 @@ export function SPSearchTermsView() {
                  (
                     <table style={styles.table}>
                         <colgroup>
-                            {columns.map(c => <col key={c.id} style={{width: c.width}} />)}
+                            {columns.map((c, i) => <col key={c.id} style={{width: `${widths[i]}px`}} />)}
                         </colgroup>
                         <thead>
                             <tr>
-                                <th style={{...styles.th, width: '30px'}}><input type="checkbox" onChange={e => handleSelectAll(e.target.checked)} /></th>
-                                {columns.slice(1).map(c => <th key={c.id} style={styles.th}>{c.label}</th>)}
+                                {columns.map((col, index) => (
+                                    <th key={col.id} style={styles.th}>
+                                        <div onClick={() => requestSort(col.id)} style={styles.sortableHeader}>
+                                            {col.id === 'name' && <input type="checkbox" style={{marginRight: '8px'}} onChange={e => handleSelectAll(e.target.checked)} onClick={e => e.stopPropagation()} />}
+                                            {col.label} 
+                                            {sortConfig.key === col.id ? (sortConfig.direction === 'ascending' ? ' ▲' : ' ▼') : ''}
+                                        </div>
+                                         <div
+                                            style={{...resizerStyles.resizer, ...(resizingColumnIndex === index ? resizerStyles.resizing : {})}}
+                                            onMouseDown={(e) => getHeaderProps(index, e)}
+                                        />
+                                    </th>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {treeData.map(node => (
+                            {sortedTreeData.map(node => (
                                 <TreeNodeRow key={node.id} node={node} level={0} expandedIds={expandedIds} onToggle={handleToggle} selectedIds={selectedIds} onSelect={handleSelect} />
                             ))}
                         </tbody>
