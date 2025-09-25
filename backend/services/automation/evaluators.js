@@ -610,25 +610,20 @@ export const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
     const todayDateStr = referenceDate.toISOString().split('T')[0];
 
     for (const campaignPerf of performanceData.values()) {
+        const campaignId = campaignPerf.campaignId; // Capture campaignId here
         const currentBudget = campaignPerf.originalBudget;
 
         for (const group of rule.config.conditionGroups) {
             let allConditionsMet = true;
             const evaluatedMetrics = [];
+            const metrics = calculateMetricsForWindow(campaignPerf.dailyData, 'TODAY', referenceDate);
 
             for (const condition of group.conditions) {
-                const metrics = calculateMetricsForWindow(campaignPerf.dailyData, 'TODAY', referenceDate);
-                
                 let metricValue;
                 if (condition.metric === 'budgetUtilization') {
                     metricValue = currentBudget > 0 ? (metrics.spend / currentBudget) * 100 : 0;
                 } else {
                     metricValue = metrics[condition.metric];
-                }
-
-                if ((condition.metric === 'acos' || condition.metric === 'roas') && metrics.sales === 0) {
-                    allConditionsMet = false;
-                    break;
                 }
 
                 let conditionValue = condition.value;
@@ -664,19 +659,19 @@ export const evaluateBudgetAccelerationRule = async (rule, performanceData) => {
                         `INSERT INTO daily_budget_overrides (campaign_id, original_budget, override_date) 
                          VALUES ($1, $2, $3) 
                          ON CONFLICT (campaign_id, override_date) DO NOTHING`,
-                        [campaignPerf.campaignId, currentBudget, todayDateStr]
+                        [campaignId, currentBudget, todayDateStr]
                     );
 
                     campaignsToUpdate.push({
-                        campaignId: String(campaignPerf.campaignId),
+                        campaignId: String(campaignId),
                         budget: { budget: newBudget, budgetType: 'DAILY' }
                     });
 
-                    if (!actionsByCampaign[campaignPerf.campaignId]) {
+                    if (!actionsByCampaign[campaignId]) {
                         actionsByCampaign[campaignId] = { changes: [], newNegatives: [] };
                     }
-                    actionsByCampaign[campaignPerf.campaignId].changes.push({
-                        entityType: 'campaign', entityId: campaignPerf.campaignId,
+                    actionsByCampaign[campaignId].changes.push({
+                        entityType: 'campaign', entityId: campaignId,
                         oldBudget: currentBudget, newBudget,
                         triggeringMetrics: evaluatedMetrics
                     });
